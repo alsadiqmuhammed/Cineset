@@ -23,13 +23,16 @@ import 'package:flutter/material.dart'
         Expanded,
         OutlinedButton,
         TextStyle,
-        FontWeight;
+        FontWeight,
+        Size;
 import 'package:flutter/services.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import 'brand.dart';
+import 'charts.dart';
+import 'insights.dart';
 import 'models.dart';
 import 'render.dart';
 import 'screens/common.dart' show toast;
@@ -37,36 +40,59 @@ import 'screens/design_controls.dart' show shareFile;
 import 'stats.dart';
 import 'store.dart';
 
-/// تقارير PDF بهوية القسم (خط تجوال، ألوان القسم، الشعار الأفقي).
+const _side = 34.0;
+
+/// تقارير PDF بهوية القسم: شريط ملوّن بالشعار المعكوس، خط تجوال، كروت بحواف ناعمة،
+/// خريطة الأسنان أو الوجه، وخط زمني للزيارات.
 class _Kit {
   final Brand b;
   final pw.Font regular, bold, extra;
-  final pw.MemoryImage logo;
-  _Kit(this.b, this.regular, this.bold, this.extra, this.logo);
+  final pw.MemoryImage logo, logoReversed;
+  _Kit(
+    this.b,
+    this.regular,
+    this.bold,
+    this.extra,
+    this.logo,
+    this.logoReversed,
+  );
 
   static Future<_Kit> load(Brand b) async {
     Future<pw.Font> font(String f) async =>
         pw.Font.ttf(await rootBundle.load('assets/fonts/$f'));
-    final logo = await rootBundle.load(b.logoHorizontal);
+    Future<pw.MemoryImage> img(String a) async =>
+        pw.MemoryImage((await rootBundle.load(a)).buffer.asUint8List());
     return _Kit(
       b,
       await font('Tajawal-Regular.ttf'),
       await font('Tajawal-Bold.ttf'),
       await font('Tajawal-ExtraBold.ttf'),
-      pw.MemoryImage(logo.buffer.asUint8List()),
+      await img(b.logoHorizontal),
+      await img(b.logoReversed),
     );
   }
 
   PdfColor c(ui.Color color) => PdfColor.fromInt(color.toARGB32());
   PdfColor get primary => c(b.primary);
+  PdfColor get deep => c(b.primaryDeep);
   PdfColor get accent => c(b.accent);
   PdfColor get text => c(b.text);
   PdfColor get muted => c(b.muted);
   PdfColor get line => c(b.line);
   PdfColor get soft => c(b.bg);
+  PdfColor get dark => c(b.dark);
 
-  pw.TextStyle t(double size, {pw.Font? font, PdfColor? color}) =>
-      pw.TextStyle(font: font ?? regular, fontSize: size, color: color ?? text);
+  pw.TextStyle t(
+    double size, {
+    pw.Font? font,
+    PdfColor? color,
+    double? height,
+  }) => pw.TextStyle(
+    font: font ?? regular,
+    fontSize: size,
+    color: color ?? text,
+    lineSpacing: height,
+  );
 
   pw.Document doc(String title) => pw.Document(
     title: title,
@@ -74,44 +100,73 @@ class _Kit {
     theme: pw.ThemeData.withFont(base: regular, bold: bold),
   );
 
-  pw.MultiPage page(
-    String title,
-    List<pw.Widget> Function() body,
-  ) => pw.MultiPage(
-    pageFormat: PdfPageFormat.a4,
-    textDirection: pw.TextDirection.rtl,
-    margin: const pw.EdgeInsets.fromLTRB(36, 30, 36, 30),
-    header: (ctx) => pw.Container(
-      margin: const pw.EdgeInsets.only(bottom: 16),
-      padding: const pw.EdgeInsets.only(bottom: 10),
-      decoration: pw.BoxDecoration(
-        border: pw.Border(bottom: pw.BorderSide(color: primary, width: 2)),
-      ),
-      child: pw.Row(
-        crossAxisAlignment: pw.CrossAxisAlignment.center,
-        children: [
-          pw.Image(logo, height: 30),
-          pw.Spacer(),
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
-            children: [
-              pw.Text(
-                title,
-                style: t(11, font: bold, color: primary),
+  /// صفحة بشريط علوي ملوّن بالصفحة الأولى، وترويسة بسيطة بالباقي.
+  pw.MultiPage page({
+    required String title,
+    required String subtitle,
+    required List<pw.Widget> Function() body,
+  }) => pw.MultiPage(
+    pageTheme: pw.PageTheme(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.only(bottom: 26),
+      textDirection: pw.TextDirection.rtl,
+      buildBackground: (ctx) => pw.FullPage(
+        ignoreMargins: true,
+        child: pw.Stack(
+          children: [
+            pw.Positioned(
+              left: -60,
+              bottom: -60,
+              child: pw.Container(
+                width: 220,
+                height: 220,
+                decoration: pw.BoxDecoration(
+                  shape: pw.BoxShape.circle,
+                  border: pw.Border.all(color: accent.shade(0.15), width: 0.8),
+                ),
               ),
-              pw.Text(
-                'صدر ${arDate(DateTime.now().millisecondsSinceEpoch)}',
-                style: t(8, color: muted),
+            ),
+            pw.Positioned(
+              left: -20,
+              bottom: -20,
+              child: pw.Container(
+                width: 140,
+                height: 140,
+                decoration: pw.BoxDecoration(
+                  shape: pw.BoxShape.circle,
+                  border: pw.Border.all(color: accent.shade(0.1), width: 0.6),
+                ),
               ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     ),
+    header: (ctx) => ctx.pageNumber == 1
+        ? _band(title, subtitle)
+        : pw.Container(
+            margin: const pw.EdgeInsets.fromLTRB(_side, 22, _side, 12),
+            padding: const pw.EdgeInsets.only(bottom: 8),
+            decoration: pw.BoxDecoration(
+              border: pw.Border(
+                bottom: pw.BorderSide(color: primary, width: 1.5),
+              ),
+            ),
+            child: pw.Row(
+              children: [
+                pw.Image(logo, height: 22),
+                pw.Spacer(),
+                pw.Text(
+                  '$title · $subtitle',
+                  style: t(9, font: bold, color: primary),
+                ),
+              ],
+            ),
+          ),
     footer: (ctx) {
       final clinic = Store.instance.clinic;
       return pw.Container(
-        margin: const pw.EdgeInsets.only(top: 10),
+        margin: const pw.EdgeInsets.symmetric(horizontal: _side),
         padding: const pw.EdgeInsets.only(top: 6),
         decoration: pw.BoxDecoration(
           border: pw.Border(top: pw.BorderSide(color: line)),
@@ -132,72 +187,100 @@ class _Kit {
         ),
       );
     },
-    build: (_) => body(),
-  );
-
-  pw.Widget title(String first, String second) => pw.Column(
-    crossAxisAlignment: pw.CrossAxisAlignment.start,
-    children: [
-      pw.Text(first, style: t(24, font: extra)),
-      pw.Text(
-        second,
-        style: t(20, font: extra, color: primary),
-      ),
-      pw.SizedBox(height: 14),
+    build: (_) => [
+      for (final w in body())
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(horizontal: _side),
+          child: w,
+        ),
     ],
   );
 
-  pw.Widget section(String s) => pw.Padding(
-    padding: const pw.EdgeInsets.only(top: 16, bottom: 8),
+  pw.Widget _band(String title, String subtitle) => pw.Container(
+    margin: const pw.EdgeInsets.only(bottom: 18),
+    padding: const pw.EdgeInsets.fromLTRB(_side, 26, _side, 22),
+    decoration: pw.BoxDecoration(
+      gradient: pw.LinearGradient(
+        begin: pw.Alignment.topRight,
+        end: pw.Alignment.bottomLeft,
+        colors: [primary, deep, dark],
+      ),
+    ),
     child: pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.center,
       children: [
-        pw.Container(width: 3, height: 13, color: primary),
-        pw.SizedBox(width: 6),
-        pw.Text(s, style: t(12.5, font: bold)),
+        pw.Expanded(
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                title,
+                style: t(24, font: extra, color: PdfColors.white),
+              ),
+              pw.SizedBox(height: 2),
+              pw.Text(
+                subtitle,
+                style: t(13, font: bold, color: accent),
+              ),
+              pw.SizedBox(height: 6),
+              pw.Text(
+                'صدر بتاريخ ${arDate(DateTime.now().millisecondsSinceEpoch)}',
+                style: t(8.5, color: PdfColors.white),
+              ),
+            ],
+          ),
+        ),
+        pw.Image(logoReversed, height: 64),
       ],
     ),
   );
 
-  /// شبكة معلومات بعمودين: (العنوان، القيمة).
-  pw.Widget info(List<(String, String)> items) {
-    final rows = <pw.Widget>[];
-    for (var i = 0; i < items.length; i += 2) {
-      rows.add(
-        pw.Row(
-          children: [
-            for (final it in items.skip(i).take(2))
-              pw.Expanded(
-                child: pw.Container(
-                  margin: const pw.EdgeInsets.all(3),
-                  padding: const pw.EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 7,
-                  ),
-                  decoration: pw.BoxDecoration(
-                    color: soft,
-                    borderRadius: pw.BorderRadius.circular(8),
-                  ),
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text(it.$1, style: t(8, color: muted)),
-                      pw.Text(
-                        it.$2.isEmpty ? '—' : it.$2,
-                        style: t(10.5, font: bold),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            if (items.length - i == 1) pw.Expanded(child: pw.SizedBox()),
-          ],
+  pw.Widget section(String s, {String? note}) => pw.Padding(
+    padding: const pw.EdgeInsets.only(top: 16, bottom: 8),
+    child: pw.Row(
+      children: [
+        pw.Container(
+          width: 4,
+          height: 14,
+          decoration: pw.BoxDecoration(
+            color: primary,
+            borderRadius: pw.BorderRadius.circular(2),
+          ),
         ),
-      );
-    }
-    return pw.Column(children: rows);
-  }
+        pw.SizedBox(width: 6),
+        pw.Text(s, style: t(12.5, font: extra)),
+        if (note != null) ...[
+          pw.Spacer(),
+          pw.Text(note, style: t(8.5, color: muted)),
+        ],
+      ],
+    ),
+  );
 
-  /// بطاقات أرقام (مثل لوحة الإحصائيات).
+  pw.Widget card(pw.Widget child, {PdfColor? color, PdfColor? border}) =>
+      pw.Container(
+        padding: const pw.EdgeInsets.all(12),
+        decoration: pw.BoxDecoration(
+          color: color ?? PdfColors.white,
+          borderRadius: pw.BorderRadius.circular(12),
+          border: pw.Border.all(color: border ?? line, width: 0.8),
+        ),
+        child: child,
+      );
+
+  pw.Widget pill(String s, {PdfColor? bg, PdfColor? fg}) => pw.Container(
+    padding: const pw.EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+    decoration: pw.BoxDecoration(
+      color: bg ?? dark,
+      borderRadius: pw.BorderRadius.circular(20),
+    ),
+    child: pw.Text(
+      s,
+      style: t(8.5, font: bold, color: fg ?? PdfColors.white),
+    ),
+  );
+
+  /// بطاقات أرقام.
   pw.Widget kpis(List<(String, String)> items) => pw.Row(
     children: [
       for (final (value, label) in items)
@@ -206,16 +289,17 @@ class _Kit {
             margin: const pw.EdgeInsets.all(3),
             padding: const pw.EdgeInsets.symmetric(vertical: 10),
             decoration: pw.BoxDecoration(
-              borderRadius: pw.BorderRadius.circular(10),
-              border: pw.Border.all(color: line),
+              color: PdfColors.white,
+              borderRadius: pw.BorderRadius.circular(12),
+              border: pw.Border.all(color: line, width: 0.8),
             ),
             child: pw.Column(
               children: [
                 pw.Text(
                   value,
-                  style: t(18, font: extra, color: primary),
+                  style: t(17, font: extra, color: primary),
                 ),
-                pw.Text(label, style: t(8.5, color: muted)),
+                pw.Text(label, style: t(8, color: muted)),
               ],
             ),
           ),
@@ -223,7 +307,49 @@ class _Kit {
     ],
   );
 
-  /// جدول بسيط بعناوين ملوّنة.
+  /// سطور (عنوان: قيمة) داخل كرت.
+  pw.Widget facts(
+    String title,
+    List<(String, String)> rows, {
+    pw.Widget? leading,
+  }) => card(
+    pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Row(
+          children: [
+            if (leading != null) ...[leading, pw.SizedBox(width: 8)],
+            pw.Text(
+              title,
+              style: t(10, font: extra, color: primary),
+            ),
+          ],
+        ),
+        pw.SizedBox(height: 6),
+        for (final (k, v) in rows)
+          pw.Padding(
+            padding: const pw.EdgeInsets.symmetric(vertical: 2),
+            child: pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.SizedBox(
+                  width: 62,
+                  child: pw.Text(k, style: t(8.5, color: muted)),
+                ),
+                pw.Expanded(
+                  child: pw.Text(
+                    v.isEmpty ? '—' : v,
+                    style: t(9.5, font: bold),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    ),
+  );
+
+  /// جدول بعناوين ملوّنة وحواف ناعمة.
   pw.Widget table(
     List<String> head,
     List<List<String>> rows, {
@@ -235,8 +361,8 @@ class _Kit {
       bool header = false,
       bool shade = false,
     }) => pw.Container(
-      color: header ? primary : (shade ? soft : null),
-      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      color: header ? primary : (shade ? soft : PdfColors.white),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       child: pw.Row(
         children: [
           for (var i = 0; i < cells.length; i++)
@@ -244,21 +370,27 @@ class _Kit {
               flex: f[i],
               child: pw.Text(
                 cells[i],
-                style: header ? t(9, font: bold, color: PdfColors.white) : t(9),
+                style: header
+                    ? t(8.5, font: bold, color: PdfColors.white)
+                    : t(8.5),
               ),
             ),
         ],
       ),
     );
-    return pw.Column(
-      children: [
-        row(head, header: true),
-        for (var i = 0; i < rows.length; i++) row(rows[i], shade: i.isOdd),
-      ],
+    return pw.ClipRRect(
+      horizontalRadius: 8,
+      verticalRadius: 8,
+      child: pw.Column(
+        children: [
+          row(head, header: true),
+          for (var i = 0; i < rows.length; i++) row(rows[i], shade: i.isOdd),
+        ],
+      ),
     );
   }
 
-  /// أشرطة نسبية (للعلاجات والأطباء).
+  /// أشرطة نسبية.
   pw.Widget bars(Map<String, int> data, int total) {
     final entries = data.entries.take(10).toList();
     final max = entries.isEmpty ? 1 : entries.first.value;
@@ -320,16 +452,114 @@ class _Kit {
     );
   }
 
-  pw.Widget note(String text) => pw.Container(
+  pw.Widget note(String title, String body, {PdfColor? color}) => pw.Container(
     width: double.infinity,
-    padding: const pw.EdgeInsets.all(10),
+    padding: const pw.EdgeInsets.fromLTRB(12, 10, 12, 10),
     decoration: pw.BoxDecoration(
       color: soft,
-      border: pw.Border(right: pw.BorderSide(color: accent, width: 3)),
+      border: pw.Border(right: pw.BorderSide(color: color ?? accent, width: 3)),
     ),
-    child: pw.Text(text, style: t(10)),
+    child: pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          title,
+          style: t(10, font: extra, color: color ?? primary),
+        ),
+        pw.SizedBox(height: 4),
+        pw.Text(body, style: t(10, height: 3)),
+      ],
+    ),
   );
+
+  pw.Widget avatar(Doctor? d, double size) {
+    final photo = d?.photo;
+    if (photo != null && File(photo).existsSync()) {
+      return pw.ClipOval(
+        child: pw.Image(
+          pw.MemoryImage(File(photo).readAsBytesSync()),
+          width: size,
+          height: size,
+          fit: pw.BoxFit.cover,
+        ),
+      );
+    }
+    return pw.Container(
+      width: size,
+      height: size,
+      alignment: pw.Alignment.center,
+      decoration: pw.BoxDecoration(color: primary, shape: pw.BoxShape.circle),
+      child: pw.Text(
+        d?.initial ?? '؟',
+        style: t(size * 0.45, font: extra, color: PdfColors.white),
+      ),
+    );
+  }
+
+  /// الخط الزمني للزيارات (سطور منفصلة حتى تتوزع على أكثر من صفحة).
+  List<pw.Widget> timeline(CaseRecord c) {
+    final items = <(int, String, bool)>[
+      (c.created, 'بداية ${b.teethChart ? 'الحالة' : 'الجلسات'}', false),
+      for (final v in c.visits)
+        (
+          v.date,
+          v.note.isEmpty ? (b.teethChart ? 'زيارة' : 'جلسة') : v.note,
+          false,
+        ),
+      if (c.completed != null) (c.completed!, 'اكتمال الحالة', false),
+      if (c.nextVisit != null && c.status == CaseStatus.active)
+        (c.nextVisit!, '${b.f('المراجعة', 'الجلسة')} القادمة', true),
+    ]..sort((x, y) => x.$1.compareTo(y.$1));
+    return [
+      for (final (i, (date, label, future)) in items.indexed)
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.SizedBox(
+              width: 16,
+              child: pw.Column(
+                children: [
+                  pw.Container(
+                    width: 11,
+                    height: 11,
+                    decoration: pw.BoxDecoration(
+                      shape: pw.BoxShape.circle,
+                      color: future ? PdfColors.white : primary,
+                      border: pw.Border.all(color: primary, width: 1.5),
+                    ),
+                  ),
+                  if (i < items.length - 1)
+                    pw.Container(width: 1.5, height: 24, color: line),
+                ],
+              ),
+            ),
+            pw.SizedBox(width: 8),
+            pw.SizedBox(
+              width: 110,
+              child: pw.Text(
+                arDate(date),
+                style: t(9, font: bold, color: future ? primary : text),
+              ),
+            ),
+            pw.Expanded(
+              child: pw.Text(
+                label,
+                style: t(9, color: future ? primary : text),
+              ),
+            ),
+          ],
+        ),
+    ];
+  }
 }
+
+/// عنوان ومحتواه ما ينفصلون على صفحتين.
+pw.Widget _keep({required List<pw.Widget> children}) => pw.Inseparable(
+  child: pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+    children: children,
+  ),
+);
 
 Future<Uint8List?> _composite(CaseRecord c, Brand b) async {
   final img = await renderReportComposite(c, b);
@@ -339,79 +569,190 @@ Future<Uint8List?> _composite(CaseRecord c, Brand b) async {
   return data!.buffer.asUint8List();
 }
 
+Future<Uint8List?> _chart(CaseRecord c, Brand b) async {
+  if (b.teethChart) {
+    if (c.teeth.isEmpty) return null;
+    return paintToPng(
+      ToothChartPainter(
+        selected: c.teeth.toSet(),
+        primary: c.teeth.any(isPrimaryTooth),
+        brand: b,
+        fontScale: 1.1,
+      ),
+      const Size(700, 700),
+    );
+  }
+  if (c.areas.isEmpty) return null;
+  return paintToPng(
+    FaceMapPainter(
+      selected: c.areas.toSet(),
+      doses: c.doses,
+      brand: b,
+      showDoses: true,
+    ),
+    const Size(560, 700),
+  );
+}
+
 String _patientLine(Patient p, Brand b) => [
   if (p.age != null) '${ar(p.age!)} سنة',
   if (p.gender != null && !b.feminine) p.gender!.label,
 ].join(' · ');
 
-List<pw.Widget> _caseBody(
+/// محتوى الحالة (مشترك بين تقرير الحالة وملف المراجع).
+Future<List<pw.Widget>> _caseBody(
   _Kit k,
   Patient p,
-  CaseRecord c,
-  Uint8List? photo, {
+  CaseRecord c, {
   bool full = true,
-}) {
+}) async {
   final b = k.b;
   final doctor = Store.instance.doctor(c.doctorId);
+  final photo = await _composite(c, b);
+  final chart = await _chart(c, b);
+  final facts = CaseFacts.of(c);
+  final alerts = caseAlerts(b, c);
+  final done = c.status == CaseStatus.done;
   return [
-    k.info([
-      (b.f('المراجع', 'المراجعة'), p.name),
-      ('العمر', _patientLine(p, b)),
-      ('الطبيب', doctor?.name ?? ''),
-      (b.teethChart ? 'العلاج' : 'الجلسة', c.title),
-      ('تاريخ البدء', arDate(c.created)),
-      ('الحالة', c.status.label),
-      if (c.completed != null) ('تاريخ الإكمال', arDate(c.completed!)),
-      (b.teethChart ? 'الزيارات' : 'الجلسات', ar(c.visits.length)),
+    pw.Row(
+      children: [
+        pw.Expanded(
+          child: pw.Text(c.title, style: k.t(18, font: k.extra)),
+        ),
+        k.pill(
+          c.status.label,
+          bg: done ? const PdfColor.fromInt(0xFFE3F1E6) : k.accent.shade(0.15),
+          fg: done ? const PdfColor.fromInt(0xFF2E6B3B) : k.deep,
+        ),
+      ],
+    ),
+    pw.SizedBox(height: 8),
+    k.note('الملخص', caseSummary(b, p, c, doctor)),
+    pw.SizedBox(height: 8),
+    k.kpis([
+      (ar(facts.days), facts.done ? 'يوم للإكمال' : 'يوم من البداية'),
+      (ar(facts.visits), b.teethChart ? 'زيارة' : 'جلسة'),
+      (
+        ar(b.teethChart ? c.teeth.length : c.areas.length),
+        b.teethChart ? 'سن معالج' : 'منطقة معالجة',
+      ),
+      (
+        facts.nextVisit == null || done
+            ? '—'
+            : (facts.daysToNext! >= 0 ? ar(facts.daysToNext!) : 'فات'),
+        facts.nextVisit == null || done
+            ? 'ماكو موعد قادم'
+            : 'يوم للموعد القادم',
+      ),
     ]),
-    if (photo != null) ...[
-      k.section('قبل وبعد'),
-      pw.ClipRRect(
-        horizontalRadius: 10,
-        verticalRadius: 10,
-        child: pw.Image(pw.MemoryImage(photo), height: full ? 330 : 200),
-      ),
-    ],
-    if (c.teeth.isNotEmpty) ...[
-      k.section('الأسنان المعالجة (ترقيم FDI)'),
-      pw.Wrap(
-        spacing: 5,
-        runSpacing: 5,
+    if (full) ...[
+      pw.SizedBox(height: 8),
+      pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          for (final t in c.teeth)
-            pw.Container(
-              padding: const pw.EdgeInsets.symmetric(
-                horizontal: 8,
-                vertical: 3,
-              ),
-              decoration: pw.BoxDecoration(
-                color: k.primary,
-                borderRadius: pw.BorderRadius.circular(10),
-              ),
-              child: pw.Text(
-                '$t',
-                style: k.t(9, font: k.bold, color: PdfColors.white),
-              ),
+          pw.Expanded(
+            child: k.facts(b.f('المراجع', 'المراجعة'), [
+              ('الاسم', p.name),
+              ('العمر', _patientLine(p, b)),
+              ('الهاتف', p.phone),
+              ('أول زيارة', arDate(p.created)),
+            ]),
+          ),
+          pw.SizedBox(width: 8),
+          pw.Expanded(
+            child: k.facts('الطبيب المعالج', [
+              ('الاسم', doctor?.name ?? ''),
+              ('الاختصاص', doctor?.specialty ?? ''),
+              ('الهاتف', doctor?.phone ?? ''),
+            ], leading: k.avatar(doctor, 26)),
+          ),
+        ],
+      ),
+    ],
+    if (photo != null)
+      // العنوان ويه محتواه بنفس الصفحة.
+      _keep(
+        children: [
+          k.section(
+            'قبل وبعد',
+            note: [
+              if (c.before?.taken != null) 'قبل: ${arDate(c.before!.taken!)}',
+              if (c.after?.taken != null) 'بعد: ${arDate(c.after!.taken!)}',
+            ].join('  ·  '),
+          ),
+          pw.Center(
+            child: pw.ClipRRect(
+              horizontalRadius: 12,
+              verticalRadius: 12,
+              child: pw.Image(pw.MemoryImage(photo), height: full ? 300 : 190),
             ),
+          ),
         ],
       ),
-    ],
-    if (c.areas.isNotEmpty) ...[
-      k.section('المناطق المعالجة'),
-      pw.Text(c.areas.join('، '), style: k.t(10)),
-    ],
-    if (full && c.visits.isNotEmpty) ...[
-      k.section(b.teethChart ? 'سجل الزيارات' : 'سجل الجلسات'),
-      k.table(
-        ['#', 'التاريخ', 'شنو انسوّى'],
-        [
-          for (final (i, v) in c.visits.indexed)
-            [ar(i + 1), arDate(v.date), v.note],
+    if (chart != null)
+      _keep(
+        children: [
+          k.section(
+            b.teethChart ? 'خريطة الأسنان (FDI)' : 'خريطة الأجزاء المعالجة',
+          ),
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Expanded(
+                flex: 5,
+                child: b.teethChart
+                    ? k.table(
+                        ['السن', 'الاسم'],
+                        [
+                          for (final t in c.teeth) ['$t', toothName(t)],
+                        ],
+                        flex: [1, 4],
+                      )
+                    : k.table(
+                        ['المنطقة', 'الكمية'],
+                        [
+                          for (final id in c.areas)
+                            [areaLabel(id), c.doses[id] ?? '—'],
+                        ],
+                        flex: [3, 2],
+                      ),
+              ),
+              pw.SizedBox(width: 10),
+              pw.Expanded(
+                flex: 4,
+                child: k.card(
+                  pw.Image(pw.MemoryImage(chart)),
+                  color: PdfColors.white,
+                ),
+              ),
+            ],
+          ),
         ],
-        flex: [1, 3, 8],
+      ),
+    if (full) ...[
+      // العنوان ويه أول سطر، والباقي يتوزع على الصفحات.
+      _keep(
+        children: [
+          k.section(
+            b.teethChart ? 'الخط الزمني للزيارات' : 'الخط الزمني للجلسات',
+          ),
+          k.timeline(c).first,
+        ],
+      ),
+      ...k.timeline(c).skip(1),
+    ],
+    if (c.note.isNotEmpty) ...[
+      pw.SizedBox(height: 12),
+      k.note('ملاحظات الطبيب', c.note),
+    ],
+    if (full && alerts.isNotEmpty) ...[
+      pw.SizedBox(height: 10),
+      k.note(
+        'للمتابعة',
+        alerts.map((a) => '• $a').join('\n'),
+        color: const PdfColor.fromInt(0xFFB26A00),
       ),
     ],
-    if (c.note.isNotEmpty) ...[k.section('ملاحظات الطبيب'), k.note(c.note)],
   ];
 }
 
@@ -426,20 +767,36 @@ Future<File> _save(pw.Document doc, String name) async {
 /// تقرير حالة واحدة.
 Future<File> caseReport(Brand b, Patient p, CaseRecord c) async {
   final k = await _Kit.load(b);
-  final photo = await _composite(c, b);
+  final body = await _caseBody(k, p, c);
   final doc = k.doc('تقرير حالة - ${p.name}');
   doc.addPage(
     k.page(
-      'تقرير حالة',
-      () => [
-        k.title('تقرير حالة', '${c.title} · ${p.name}'),
-        ..._caseBody(k, p, c, photo),
-        pw.SizedBox(height: 30),
+      title: 'تقرير حالة',
+      subtitle: '${p.name} · ${c.title}',
+      body: () => [
+        ...body,
+        pw.SizedBox(height: 28),
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
-            pw.Text('توقيع الطبيب: ____________________', style: k.t(10)),
-            pw.Text('الختم', style: k.t(10, color: k.muted)),
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text('توقيع الطبيب', style: k.t(9, color: k.muted)),
+                pw.SizedBox(height: 18),
+                pw.Container(width: 150, height: 0.8, color: k.line),
+              ],
+            ),
+            pw.Container(
+              width: 70,
+              height: 70,
+              alignment: pw.Alignment.center,
+              decoration: pw.BoxDecoration(
+                shape: pw.BoxShape.circle,
+                border: pw.Border.all(color: k.line, width: 0.8),
+              ),
+              child: pw.Text('الختم', style: k.t(9, color: k.muted)),
+            ),
           ],
         ),
       ],
@@ -451,25 +808,43 @@ Future<File> caseReport(Brand b, Patient p, CaseRecord c) async {
 /// ملف المراجع كامل بكل حالاته.
 Future<File> patientReport(Brand b, Patient p) async {
   final k = await _Kit.load(b);
-  final photos = <String, Uint8List?>{
-    for (final c in p.cases) c.id: await _composite(c, b),
-  };
+  final cases = [
+    for (final c in p.cases) await _caseBody(k, p, c, full: false),
+  ];
+  final visits = p.cases.fold(0, (n, c) => n + c.visits.length);
   final doc = k.doc('ملف ${p.name}');
   doc.addPage(
     k.page(
-      'ملف ${b.f('المراجع', 'المراجعة')}',
-      () => [
-        k.title('ملف ${b.f('المراجع', 'المراجعة')}', p.name),
-        k.info([
-          ('رقم الهاتف', p.phone),
-          ('العمر', _patientLine(p, b)),
-          ('أول زيارة', arDate(p.created)),
-          ('عدد الحالات', ar(p.cases.length)),
+      title: 'ملف ${b.f('المراجع', 'المراجعة')}',
+      subtitle: p.name,
+      body: () => [
+        k.kpis([
+          (ar(p.cases.length), 'حالة'),
+          (
+            ar(p.cases.where((c) => c.status == CaseStatus.active).length),
+            'قيد العلاج',
+          ),
+          (
+            ar(p.cases.where((c) => c.status == CaseStatus.done).length),
+            'مكتملة',
+          ),
+          (ar(visits), b.teethChart ? 'زيارة' : 'جلسة'),
         ]),
-        if (p.notes.isNotEmpty) ...[k.section('ملاحظات عامة'), k.note(p.notes)],
-        for (final c in p.cases) ...[
-          k.section('${c.title} · ${arDate(c.created)}'),
-          ..._caseBody(k, p, c, photos[c.id], full: false),
+        pw.SizedBox(height: 8),
+        k.facts('البيانات', [
+          ('الاسم', p.name),
+          ('العمر', _patientLine(p, b)),
+          ('الهاتف', p.phone),
+          ('أول زيارة', arDate(p.created)),
+        ]),
+        if (p.notes.isNotEmpty) ...[
+          pw.SizedBox(height: 8),
+          k.note('ملاحظات عامة', p.notes),
+        ],
+        for (final body in cases) ...[
+          pw.SizedBox(height: 14),
+          pw.Divider(color: k.line),
+          ...body,
         ],
       ],
     ),
@@ -483,18 +858,48 @@ Future<File> doctorReport(Brand b, Doctor d, Stats s) async {
   final doc = k.doc('تقرير ${d.name}');
   doc.addPage(
     k.page(
-      'تقرير الطبيب',
-      () => [
-        k.title(d.name, d.specialty),
-        if (d.services.isNotEmpty)
-          pw.Text('الخدمات: ${d.services.join('، ')}', style: k.t(10)),
-        if (d.bio.isNotEmpty) ...[k.section('نبذة'), k.note(d.bio)],
+      title: 'تقرير الطبيب',
+      subtitle: d.name,
+      body: () => [
+        pw.Row(
+          children: [
+            k.avatar(d, 54),
+            pw.SizedBox(width: 12),
+            pw.Expanded(
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(d.name, style: k.t(16, font: k.extra)),
+                  pw.Text(d.specialty, style: k.t(10, color: k.muted)),
+                  if (d.services.isNotEmpty)
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.only(top: 4),
+                      child: pw.Wrap(
+                        spacing: 4,
+                        runSpacing: 4,
+                        children: [
+                          for (final x in d.services) k.pill(x, bg: k.primary),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        if (d.bio.isNotEmpty) ...[
+          pw.SizedBox(height: 10),
+          k.note('نبذة', d.bio),
+        ],
         k.section('بالأرقام'),
         k.kpis([
           (ar(s.total), 'حالة'),
           (ar(s.patients), b.patients),
           (ar(s.done), 'مكتملة'),
-          (ar(s.active), 'قيد العلاج'),
+          (
+            s.avgDays == null ? '—' : ar(s.avgDays!.round()),
+            'يوم متوسط العلاج',
+          ),
         ]),
         if (s.byTreatment.isNotEmpty) ...[
           k.section('حسب العلاج'),
@@ -550,9 +955,9 @@ Future<File> clinicReport(
   final scope = [period.label, if (doctor != null) doctor.name].join(' · ');
   doc.addPage(
     k.page(
-      'التقرير الشامل',
-      () => [
-        k.title('التقرير الشامل', '${b.name} · $scope'),
+      title: 'التقرير الشامل',
+      subtitle: '${b.name} · $scope',
+      body: () => [
         k.kpis([
           (ar(s.total), 'حالة'),
           (ar(s.patients), b.patients),

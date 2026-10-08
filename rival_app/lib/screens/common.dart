@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../brand.dart';
+import '../main.dart';
 import '../models.dart';
 
 void toast(BuildContext context, String text) {
@@ -493,3 +494,59 @@ class BarRow extends StatelessWidget {
 }
 
 String formatDate(int ms) => arDate(ms);
+
+/// مبدّل القسم بضغطة وحدة (أسنان / تجميل).
+class SectionSwitch extends StatelessWidget {
+  const SectionSwitch({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    Widget seg(Brand x, String label) {
+      final on = x.section == b.section;
+      return Material(
+        color: on ? x.primary : Colors.transparent,
+        borderRadius: BorderRadius.circular(30),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(30),
+          onTap: on ? null : () => RivalApp.of(context).choose(x.section),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Image.asset(
+                  on ? x.logoReversed : x.symbol,
+                  height: 20,
+                  fit: BoxFit.contain,
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: on ? Colors.white : b.muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: b.card,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: b.line),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [seg(dental, 'أسنان'), seg(beauty, 'تجميل')],
+      ),
+    );
+  }
+}

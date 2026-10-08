@@ -8,7 +8,9 @@ import 'package:rival_clinic/main.dart';
 import 'package:rival_clinic/models.dart';
 import 'package:rival_clinic/render.dart';
 import 'package:rival_clinic/report_pdf.dart';
+import 'package:rival_clinic/charts.dart';
 import 'package:rival_clinic/design.dart';
+import 'package:rival_clinic/screens/teeth_chart.dart';
 import 'package:rival_clinic/screens/design_canvas.dart';
 import 'package:rival_clinic/stats.dart';
 import 'package:rival_clinic/store.dart';
@@ -110,9 +112,26 @@ void main() {
     final record = Store.instance.patients.single.cases.single;
     expect(record.doctorId, 'd1');
 
-    await tester.scrollUntilVisible(find.text('11'), 300);
-    await tester.tap(find.text('11'));
-    await tester.tap(find.text('21'));
+    // نضغط على مكان السن بالرسمة نفسها.
+    final chart = find.byType(TeethChart);
+    await tester.scrollUntilVisible(
+      chart,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    final paint = find.byWidgetPredicate(
+      (w) => w is CustomPaint && w.painter is ToothChartPainter,
+    );
+    final box = tester.getRect(paint);
+    for (final t in [11, 21]) {
+      final spot = toothLayout(
+        box.size,
+        primary: false,
+      ).firstWhere((s) => s.fdi == t);
+      await tester.tapAt(box.topLeft + spot.center);
+      await tester.pump();
+    }
     await settle(tester, 3);
     expect(record.teeth, [11, 21]);
 
@@ -194,17 +213,31 @@ void main() {
       final c = CaseRecord(
         id: '1',
         title: 'فينير',
-        created: DateTime.now().millisecondsSinceEpoch,
+        created: DateTime.now()
+            .subtract(const Duration(days: 45))
+            .millisecondsSinceEpoch,
         doctorId: 'd1',
-        teeth: [11, 12, 21, 22],
+        teeth: [13, 12, 11, 21, 22, 23],
         note: 'ثمان قطع فينير، اللون BL2.',
         visits: [
           Visit(
             id: 'v',
-            date: DateTime.now().millisecondsSinceEpoch,
+            date: DateTime.now()
+                .subtract(const Duration(days: 30))
+                .millisecondsSinceEpoch,
             note: 'تحضير وطبعة',
           ),
+          Visit(
+            id: 'v2',
+            date: DateTime.now()
+                .subtract(const Duration(days: 10))
+                .millisecondsSinceEpoch,
+            note: 'تركيب الفينير',
+          ),
         ],
+        nextVisit: DateTime.now()
+            .add(const Duration(days: 30))
+            .millisecondsSinceEpoch,
         before: Photo(b, a: const Offset(250, 700), b: const Offset(650, 700)),
         after: Photo(a, a: const Offset(250, 700), b: const Offset(650, 700)),
       );
@@ -219,6 +252,39 @@ void main() {
         ),
         await clinicReport(dental, Stats.of(store), period: Period.all),
       ];
+      // قسم التجميل: خريطة الوجه والكميات.
+      await store.open(Section.beauty);
+      final bp = await store.addPatient(
+        'مريم جاسم',
+        '07801112233',
+        birthYear: 1995,
+      );
+      final bc = CaseRecord(
+        id: 'b1',
+        title: 'فلر',
+        created: DateTime.now()
+            .subtract(const Duration(days: 20))
+            .millisecondsSinceEpoch,
+        doctorId: 'b1',
+        areas: ['lips', 'nasolabial_r', 'nasolabial_l'],
+        doses: {'lips': '١ مل', 'nasolabial_r': '٠.٥ مل'},
+        nextVisit: DateTime.now()
+            .add(const Duration(days: 14))
+            .millisecondsSinceEpoch,
+        visits: [
+          Visit(
+            id: 'v1',
+            date: DateTime.now()
+                .subtract(const Duration(days: 20))
+                .millisecondsSinceEpoch,
+            note: 'حقن الشفايف',
+          ),
+        ],
+        before: Photo(b, a: const Offset(250, 700), b: const Offset(650, 700)),
+        after: Photo(a, a: const Offset(250, 700), b: const Offset(650, 700)),
+      );
+      bp.cases.add(bc);
+      files.add(await caseReport(beauty, bp, bc));
       for (final f in files) {
         final bytes = f.readAsBytesSync();
         expect(String.fromCharCodes(bytes.take(5)), '%PDF-');

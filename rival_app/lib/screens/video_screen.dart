@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
 import '../brand.dart';
@@ -37,6 +38,9 @@ class _VideoScreenState extends State<VideoScreen> {
   bool _labels = true;
   bool _brandFrame = true;
   bool _working = false;
+  double _progress = 0;
+  String _stepText = '';
+  String? _error;
   bool _ready = false;
   String? _video;
   VideoPlayerController? _player;
@@ -117,13 +121,28 @@ class _VideoScreenState extends State<VideoScreen> {
     );
   }
 
+  String get _logPath => '${Store.instance.exportsDir.path}/video_log.txt';
+
+  void _step(String text, double progress) {
+    if (!mounted) return;
+    setState(() {
+      _stepText = text;
+      _progress = progress;
+    });
+  }
+
   Future<void> _make() async {
-    setState(() => _working = true);
+    setState(() {
+      _working = true;
+      _error = null;
+    });
     final tmp = Store.instance.exportsDir.path;
     try {
+      _step('تجهيز الصور...', 0.02);
       final b = await renderDesign(_spec(which: Which.before, layers: false)!);
       final a = await renderDesign(_spec(which: Which.after, layers: false)!);
       final bPath = await writePng(b, '$tmp/frame_before.png');
+      _step('تجهيز الصور...', 0.06);
       final aPath = await writePng(a, '$tmp/frame_after.png');
       b.dispose();
       a.dispose();
@@ -138,16 +157,33 @@ class _VideoScreenState extends State<VideoScreen> {
         layerPath = await writePng(o, '$tmp/frame_overlay.png');
         o.dispose();
       }
+      _step('صناعة الفيديو...', 0.1);
       final out = await VideoMaker.make(
         beforeFrame: bPath,
         afterFrame: aPath,
         overlay: layerPath,
         output: Store.instance.exportPath('mp4'),
+        log: _logPath,
+        onProgress: (p) => _step('صناعة الفيديو...', 0.1 + 0.85 * p),
       );
+      _step('تشغيل المعاينة...', 0.97);
       final player = VideoPlayerController.file(File(out));
-      await player.initialize();
-      await player.setLooping(true);
-      await player.play();
+      try {
+        await player.initialize().timeout(const Duration(seconds: 20));
+        await player.setLooping(true);
+        await player.play();
+      } catch (_) {
+        // الفيديو انصنع؛ بس المعاينة ما اشتغلت. نخلّي الحفظ والمشاركة متاحة.
+        player.dispose();
+        if (mounted) {
+          setState(() => _video = out);
+          toast(
+            context,
+            'الفيديو جاهز. المعاينة ما اشتغلت، بس تگدر تحفظه أو تشاركه.',
+          );
+        }
+        return;
+      }
       if (!mounted) {
         player.dispose();
         return;
@@ -157,7 +193,11 @@ class _VideoScreenState extends State<VideoScreen> {
         _player = player;
       });
     } catch (e) {
-      if (mounted) toast(context, 'صار خطأ بإنشاء الفيديو: $e');
+      if (mounted) {
+        setState(
+          () => _error = e is PlatformException ? (e.message ?? '$e') : '$e',
+        );
+      }
     } finally {
       if (mounted) setState(() => _working = false);
     }
@@ -178,7 +218,7 @@ class _VideoScreenState extends State<VideoScreen> {
       appBar: AppBar(title: const Text('فيديو التحوّل')),
       body: Column(
         children: [
-          if (_working) const LinearProgressIndicator(),
+          if (_working) LinearProgressIndicator(value: _progress),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
             child: Center(
@@ -267,13 +307,70 @@ class _VideoScreenState extends State<VideoScreen> {
                   ),
                 ],
                 const SizedBox(height: 16),
-                if (_video == null)
-                  FilledButton.icon(
-                    onPressed: !_ready || _working ? null : _make,
-                    icon: const Icon(Icons.movie_filter),
-                    label: Text(_working ? 'جاري الإنشاء...' : 'إنشاء الفيديو'),
+                if (_working)
+                  Column(
+                    children: [
+                      Text(
+                        '$_stepText ${ar((_progress * 100).round())}٪',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: b.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: LinearProgressIndicator(
+                          value: _progress,
+                          minHeight: 10,
+                        ),
+                      ),
+                    ],
                   )
-                else ...[
+                else if (_video == null) ...[
+                  if (_error != null)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFDECEA),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Text(
+                            'ما انصنع الفيديو',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFFB3261E),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(_error!, style: const TextStyle(fontSize: 12)),
+                          Align(
+                            alignment: AlignmentDirectional.centerEnd,
+                            child: TextButton.icon(
+                              onPressed: () {
+                                if (File(_logPath).existsSync()) {
+                                  shareFile(_logPath);
+                                }
+                              },
+                              icon: const Icon(Icons.bug_report_outlined),
+                              label: const Text('شارك سجل الخطأ'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  FilledButton.icon(
+                    onPressed: !_ready ? null : _make,
+                    icon: const Icon(Icons.movie_filter),
+                    label: Text(
+                      _error == null ? 'إنشاء الفيديو' : 'جرّب مرة ثانية',
+                    ),
+                  ),
+                ] else ...[
                   Row(
                     children: [
                       Expanded(

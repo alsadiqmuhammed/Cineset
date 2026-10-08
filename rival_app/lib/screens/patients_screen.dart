@@ -63,7 +63,15 @@ class _PatientsScreenState extends State<PatientsScreen> {
       builder: (context, _) {
         final list = Store.instance.patients.where(_matches).toList();
         return Scaffold(
-          appBar: AppBar(title: Text(b.patients)),
+          appBar: AppBar(
+            title: Text(b.patients),
+            actions: const [
+              Padding(
+                padding: EdgeInsetsDirectional.only(end: 12),
+                child: SectionSwitch(),
+              ),
+            ],
+          ),
           floatingActionButton: FloatingActionButton.extended(
             heroTag: null,
             onPressed: _add,

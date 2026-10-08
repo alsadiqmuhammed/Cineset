@@ -19,7 +19,6 @@ class Brand extends ThemeExtension<Brand> {
   final Color bg, card, dark, text, muted, line;
   final String logoPrimary, logoReversed, logoHorizontal, symbol;
   final List<String> treatments;
-  final List<String> areas;
   final bool teethChart;
   final AlignTarget alignTarget;
   final String patient, patients, newPatient;
@@ -45,7 +44,6 @@ class Brand extends ThemeExtension<Brand> {
     required this.logoHorizontal,
     required this.symbol,
     required this.treatments,
-    required this.areas,
     required this.teethChart,
     required this.alignTarget,
     required this.patient,
@@ -266,7 +264,6 @@ const dental = Brand(
     'أسنان الأطفال',
     'علاج عصب',
   ],
-  areas: [],
   teethChart: true,
   alignTarget: AlignTarget.mouth,
   patient: 'مراجع',
@@ -304,18 +301,6 @@ const beauty = Brand(
     'خيوط شد',
     'ليزر',
     'تنظيف بشرة',
-  ],
-  areas: [
-    'الشفايف',
-    'الجبهة',
-    'حول العين',
-    'الخدود',
-    'الذقن',
-    'خط الفك',
-    'الأنف',
-    'الرقبة',
-    'تحت العين',
-    'الوجه كامل',
   ],
   teethChart: false,
   alignTarget: AlignTarget.eyes,

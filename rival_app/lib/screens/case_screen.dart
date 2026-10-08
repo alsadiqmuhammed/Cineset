@@ -349,6 +349,7 @@ class _CaseScreenState extends State<CaseScreen> {
                 BrandCard(
                   child: TeethChart(
                     selected: c.teeth.toSet(),
+                    child: (widget.patient.age ?? 99) < 12,
                     onToggle: (t) {
                       c.teeth.contains(t) ? c.teeth.remove(t) : c.teeth.add(t);
                       c.teeth.sort();
@@ -357,23 +358,87 @@ class _CaseScreenState extends State<CaseScreen> {
                   ),
                 ),
               ] else ...[
-                SectionHeader('المناطق المعالجة'),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
+                SectionHeader(
+                  'الأجزاء المعالجة',
+                  trailing: c.areas.isEmpty
+                      ? null
+                      : Text(
+                          ar(c.areas.length),
+                          style: TextStyle(
+                            color: b.primary,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                ),
+                BrandCard(
+                  child: FaceMap(
+                    selected: c.areas,
+                    doses: c.doses,
+                    onToggle: (id) {
+                      if (c.areas.remove(id)) {
+                        c.doses.remove(id);
+                      } else {
+                        c.areas.add(id);
+                      }
+                      _save();
+                    },
+                    onDose: (id, dose) {
+                      dose.isEmpty ? c.doses.remove(id) : c.doses[id] = dose;
+                      _save();
+                    },
+                  ),
+                ),
+              ],
+              SectionHeader(b.f('المراجعة القادمة', 'الجلسة القادمة')),
+              BrandCard(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 6,
+                ),
+                child: Row(
                   children: [
-                    for (final a in b.areas)
-                      FilterChip(
-                        label: Text(a),
-                        selected: c.areas.contains(a),
-                        onSelected: (v) {
-                          v ? c.areas.add(a) : c.areas.remove(a);
+                    Icon(Icons.event_note, color: b.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        c.nextVisit == null ? 'ما محدد' : arDate(c.nextVisit!),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: c.nextVisit == null ? b.muted : b.text,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        final now = DateTime.now();
+                        final d = await showDatePicker(
+                          context: context,
+                          initialDate: c.nextVisit == null
+                              ? now.add(const Duration(days: 7))
+                              : DateTime.fromMillisecondsSinceEpoch(
+                                  c.nextVisit!,
+                                ),
+                          firstDate: DateTime(now.year - 1),
+                          lastDate: DateTime(now.year + 3),
+                        );
+                        if (d == null) return;
+                        c.nextVisit = d.millisecondsSinceEpoch;
+                        _save();
+                      },
+                      child: Text(c.nextVisit == null ? 'حدد موعد' : 'غيّر'),
+                    ),
+                    if (c.nextVisit != null)
+                      IconButton(
+                        tooltip: 'شيل الموعد',
+                        onPressed: () {
+                          c.nextVisit = null;
                           _save();
                         },
+                        icon: Icon(Icons.close, size: 18, color: b.muted),
                       ),
                   ],
                 ),
-              ],
+              ),
               SectionHeader(
                 b.teethChart ? 'الزيارات' : 'الجلسات',
                 trailing: TextButton.icon(

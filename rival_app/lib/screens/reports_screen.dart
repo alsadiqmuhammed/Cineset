@@ -27,7 +27,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
         final s = Stats.of(store, period: _period, doctorId: _doctorId);
         final monthly = Stats.of(store, doctorId: _doctorId).monthly(6);
         return Scaffold(
-          appBar: AppBar(title: const Text('التقارير')),
+          appBar: AppBar(
+            title: const Text('التقارير'),
+            actions: const [
+              Padding(
+                padding: EdgeInsetsDirectional.only(end: 12),
+                child: SectionSwitch(),
+              ),
+            ],
+          ),
           body: ListView(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 40),
             children: [

@@ -52,6 +52,19 @@ class DashboardScreen extends StatelessWidget {
             .take(8)
             .toList();
         final recent = store.allCases.take(5).toList();
+        final soon = DateTime.now()
+            .add(const Duration(days: 14))
+            .millisecondsSinceEpoch;
+        final upcoming =
+            store.allCases
+                .where(
+                  (e) =>
+                      e.$2.status == CaseStatus.active &&
+                      e.$2.nextVisit != null &&
+                      e.$2.nextVisit! <= soon,
+                )
+                .toList()
+              ..sort((a, b) => a.$2.nextVisit!.compareTo(b.$2.nextVisit!));
         return Scaffold(
           body: SafeArea(
             child: ListView(
@@ -61,11 +74,7 @@ class DashboardScreen extends StatelessWidget {
                   children: [
                     Image.asset(b.logoHorizontal, height: 34),
                     const Spacer(),
-                    IconButton.filledTonal(
-                      tooltip: 'بدّل القسم',
-                      onPressed: () => onGo(3),
-                      icon: const Icon(Icons.swap_horiz),
-                    ),
+                    const SectionSwitch(),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -170,6 +179,13 @@ class DashboardScreen extends StatelessWidget {
                     ),
                   ],
                 ),
+                if (upcoming.isNotEmpty) ...[
+                  SectionHeader('المواعيد القادمة'),
+                  for (final (p, c) in upcoming.take(6)) ...[
+                    _AppointmentTile(p, c),
+                    const SizedBox(height: 8),
+                  ],
+                ],
                 if (active.isNotEmpty) ...[
                   SectionHeader(
                     'قيد العلاج',
@@ -374,6 +390,99 @@ class _InfoLine extends StatelessWidget {
           child: Text(text, style: TextStyle(color: b.text)),
         ),
       ],
+    );
+  }
+}
+
+class _AppointmentTile extends StatelessWidget {
+  final Patient p;
+  final CaseRecord c;
+  const _AppointmentTile(this.p, this.c);
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    final d = DateTime.fromMillisecondsSinceEpoch(c.nextVisit!);
+    final today = DateTime.now();
+    final days = DateTime(
+      d.year,
+      d.month,
+      d.day,
+    ).difference(DateTime(today.year, today.month, today.day)).inDays;
+    final late = days < 0;
+    final when = late
+        ? 'فات من ${ar(-days)} يوم'
+        : days == 0
+        ? 'اليوم'
+        : days == 1
+        ? 'باچر'
+        : 'بعد ${ar(days)} يوم';
+    return BrandCard(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CaseScreen(patient: p, record: c),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 50,
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            decoration: BoxDecoration(
+              color: late
+                  ? const Color(0xFFFDECEA)
+                  : b.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  ar(d.day),
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: late ? const Color(0xFFB3261E) : b.primary,
+                  ),
+                ),
+                Text(
+                  arMonths[d.month - 1],
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 9, color: b.muted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  p.name,
+                  style: TextStyle(fontWeight: FontWeight.w800, color: b.text),
+                ),
+                Text(c.title, style: TextStyle(color: b.muted, fontSize: 12)),
+              ],
+            ),
+          ),
+          Pill(
+            when,
+            bg: late
+                ? const Color(0xFFFDECEA)
+                : b.accent.withValues(alpha: 0.35),
+            fg: late ? const Color(0xFFB3261E) : b.dark,
+          ),
+          if (p.phone.isNotEmpty)
+            IconButton(
+              tooltip: 'واتساب',
+              onPressed: () => openWhatsApp(p.phone),
+              icon: Icon(Icons.chat, color: b.primary, size: 20),
+            ),
+        ],
+      ),
     );
   }
 }

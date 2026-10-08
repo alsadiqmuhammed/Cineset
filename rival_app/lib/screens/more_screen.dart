@@ -73,7 +73,15 @@ class MoreScreen extends StatelessWidget {
         final me = store.activeDoctor;
         final other = b.section == Section.dental ? beauty : dental;
         return Scaffold(
-          appBar: AppBar(title: const Text('المزيد')),
+          appBar: AppBar(
+            title: const Text('المزيد'),
+            actions: const [
+              Padding(
+                padding: EdgeInsetsDirectional.only(end: 12),
+                child: SectionSwitch(),
+              ),
+            ],
+          ),
           body: ListView(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 40),
             children: [

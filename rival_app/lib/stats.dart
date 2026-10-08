@@ -1,3 +1,4 @@
+import 'charts.dart' show areaLabel;
 import 'models.dart';
 import 'store.dart';
 
@@ -77,7 +78,8 @@ class Stats {
   Map<String, int> get byDoctor =>
       _count(cases.map((e) => doctorNames[e.$2.doctorId] ?? 'بدون طبيب'));
 
-  Map<String, int> get byArea => _count([for (final e in cases) ...e.$2.areas]);
+  Map<String, int> get byArea =>
+      _count([for (final e in cases) ...e.$2.areas.map(areaLabel)]);
 
   Map<String, int> get byGender =>
       _count([for (final e in cases) e.$1.gender?.label ?? 'غير محدد']);

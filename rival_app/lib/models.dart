@@ -1,5 +1,7 @@
 import 'dart:ui';
 
+import 'charts.dart' show legacyAreaIds;
+
 /// صورة مع نقطتي المحاذاة (بإحداثيات بكسلات الصورة).
 /// للأسنان: زاويتي الفم. للتجميل: العينين. أو أي نقطتين ثابتتين بالصورتين.
 class Photo {
@@ -63,8 +65,11 @@ class CaseRecord {
   CaseStatus status;
   int? completed;
   final List<int> teeth; // ترقيم FDI
-  final List<String> areas; // مناطق الوجه (تجميل)
+  final List<String> areas; // مناطق خريطة الوجه (تجميل)
+  final Map<String, String>
+  doses; // الكمية لكل منطقة، مثلاً "٢٠ وحدة" أو "١ مل"
   final List<Visit> visits;
+  int? nextVisit; // موعد المراجعة القادم
 
   CaseRecord({
     required this.id,
@@ -78,10 +83,18 @@ class CaseRecord {
     this.completed,
     List<int>? teeth,
     List<String>? areas,
+    Map<String, String>? doses,
     List<Visit>? visits,
+    this.nextVisit,
   }) : teeth = teeth ?? [],
        areas = areas ?? [],
+       doses = doses ?? {},
        visits = visits ?? [];
+
+  /// تاريخ آخر زيارة (أو بداية الحالة).
+  int get lastActivity => visits.isEmpty
+      ? created
+      : visits.map((v) => v.date).reduce((a, b) => a > b ? a : b);
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -95,7 +108,9 @@ class CaseRecord {
     if (completed != null) 'completed': completed,
     'teeth': teeth,
     'areas': areas,
+    'doses': doses,
     'visits': [for (final v in visits) v.toJson()],
+    if (nextVisit != null) 'nextVisit': nextVisit,
   };
 
   factory CaseRecord.fromJson(Map<String, dynamic> j) => CaseRecord(
@@ -113,7 +128,15 @@ class CaseRecord {
     status: CaseStatus.values.asNameMap()[j['status']] ?? CaseStatus.active,
     completed: j['completed'] as int?,
     teeth: [for (final t in (j['teeth'] as List? ?? [])) t as int],
-    areas: [for (final a in (j['areas'] as List? ?? [])) a as String],
+    areas: [
+      for (final a in (j['areas'] as List? ?? []))
+        legacyAreaIds[a as String] ?? a,
+    ],
+    doses: {
+      for (final e in ((j['doses'] as Map?) ?? {}).entries)
+        e.key as String: e.value as String,
+    },
+    nextVisit: j['nextVisit'] as int?,
     visits: [
       for (final v in (j['visits'] as List? ?? []))
         Visit.fromJson(v as Map<String, dynamic>),
