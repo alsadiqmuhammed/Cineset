@@ -4,6 +4,16 @@
   "private": true,
   "description": "CINESET production workspace and client portal",
   "type": "commonjs",
-  "scripts": {"start":"node server.js","check":"node --check server.js && node --check public/app.js && node --check public/portfolio.js && node --check public/invite.js"},
-  "engines": {"node": ">=20"}
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && for f in lib/*.js public/*.js; do node --check $f || exit 1; done"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.132.0",
+    "nodemailer": "^10.0.16",
+    "pg": "^8.23.1"
+  }
 }

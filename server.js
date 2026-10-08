@@ -3,6 +3,10 @@ const fs=require('fs');
 const path=require('path');
 const crypto=require('crypto');
 const {URL}=require('url');
+const {openStore}=require('./lib/store');
+const {openFiles}=require('./lib/files');
+const {openMailer}=require('./lib/mailer');
+const {openAI}=require('./lib/ai');
 
 const PORT=Number(process.env.PORT||3000);
 const NODE_ENV=process.env.NODE_ENV||'development';
@@ -19,12 +23,12 @@ const DB_DIR=path.resolve(process.env.DATA_DIR||path.join(ROOT,'data'));
 const DB_PATH=path.join(DB_DIR,'db.json');
 const UPLOADS=path.resolve(process.env.UPLOADS_DIR||path.join(ROOT,'uploads'));
 const PUBLIC=path.join(ROOT,'public');
+const APP_BASE_URL=(process.env.APP_BASE_URL||`http://localhost:${PORT}`).replace(/\/$/,'');
 fs.mkdirSync(DB_DIR,{recursive:true}); fs.mkdirSync(UPLOADS,{recursive:true});
 
 const empty={users:[],workspaces:[],projects:[],comments:[],versions:[],approvals:[],files:[],portfolio:[],invites:[],team:[],calendar:[],quotes:[],invoices:[],contracts:[],notifications:[],aiPlans:[]};
-let db;
-try{db=JSON.parse(fs.readFileSync(DB_PATH,'utf8'));}catch{db=structuredClone(empty);}
-for(const k of Object.keys(empty)) if(!Array.isArray(db[k])) db[k]=[];
+// Set up in main(): db/save come from the store (JSON file or PostgreSQL); files, mailer and ai from lib/.
+let db,save,store,files,mailer,ai;
 
 const now=()=>new Date().toISOString();
 const id=(p)=>p+'_'+crypto.randomBytes(9).toString('hex');
@@ -32,7 +36,6 @@ const hash=(value,salt=crypto.randomBytes(16).toString('hex'))=>({salt,hash:cryp
 const verify=(value,user)=>{try{return crypto.timingSafeEqual(crypto.scryptSync(value,user.passwordSalt,64),Buffer.from(user.passwordHash,'hex'));}catch{return false;}};
 const safeName=(s)=>String(s||'upload.bin').replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,180)||'upload.bin';
 const mime=(file)=>({'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.mp4':'video/mp4','.webm':'video/webm','.mov':'video/quicktime','.jpg':'image/jpeg','.jpeg':'image/jpeg','.png':'image/png','.gif':'image/gif','.pdf':'application/pdf','.txt':'text/plain; charset=utf-8'}[path.extname(file).toLowerCase()]||'application/octet-stream');
-const save=()=>{const tmp=DB_PATH+'.tmp';fs.writeFileSync(tmp,JSON.stringify(db,null,2));fs.renameSync(tmp,DB_PATH);};
 
 function tokenFor(userId){const p=Buffer.from(JSON.stringify({u:userId,e:Date.now()+7*86400000})).toString('base64url');const s=crypto.createHmac('sha256',SECRET).update(p).digest('base64url');return p+'.'+s;}
 function userFromReq(req){
@@ -52,7 +55,11 @@ function ownerProject(u,projectId){const p=db.projects.find(x=>x.id===projectId)
 // Clients a creator may work with: invited team members, or clients already on one of their projects.
 function creatorClientIds(u){const ids=new Set();for(const t of db.team)if(t.ownerId===u.id&&t.role==='client')ids.add(t.memberUserId);for(const q of db.projects)if(q.ownerId===u.id&&q.clientId)ids.add(q.clientId);return ids;}
 function linkTargets(u,b){const projectId=b.projectId?String(b.projectId).trim():null;const project=projectId?ownerProject(u,projectId):null;if(projectId&&!project)return{error:'Project not found'};const clientId=b.clientId?String(b.clientId).trim():(project?.clientId||null);if(clientId&&!creatorClientIds(u).has(clientId))return{error:'Client not found. Invite them to your workspace first.'};if(project?.clientId&&clientId&&clientId!==project.clientId)return{error:'Client is not on this project'};return{projectId,clientId};}
-function notify(userId,type,title,message,projectId=null){db.notifications.unshift({id:id('n'),userId,type,title,message,projectId,read:false,createdAt:now()});db.notifications=db.notifications.slice(0,500);}
+function notify(userId,type,title,message,projectId=null){db.notifications.unshift({id:id('n'),userId,type,title,message,projectId,read:false,createdAt:now()});db.notifications=db.notifications.slice(0,500);emailUser(userId,`CINESET: ${title}`,`${message}\n\nOpen CINESET: ${APP_BASE_URL}/`);}
+function emailUser(userId,subject,text){if(!mailer.enabled||process.env.EMAIL_NOTIFICATIONS==='false')return;const user=db.users.find(x=>x.id===userId);if(!user||DEMO_EMAIL.test(user.email))return;mailer.send({to:user.email,subject,text});}
+// Per-user limit on AI requests, since each one costs money.
+const aiUsage=new Map();
+function aiAllowed(userId){const limit=Number(process.env.AI_REQUESTS_PER_HOUR||20);const t=Date.now();const a=(aiUsage.get(userId)||[]).filter(x=>t-x<3600000);if(a.length>=limit){aiUsage.set(userId,a);return false;}a.push(t);aiUsage.set(userId,a);return true;}
 function seed(){if(!DEMO||db.users.length)return;const a=hash('Demo1234'),b=hash('Demo1234');db.users=[{id:'u_creator',email:'creator@cineset.local',name:'CINESET Studio',role:'creator',passwordSalt:a.salt,passwordHash:a.hash,createdAt:now()},{id:'u_client',email:'client@cineset.local',name:'Sarah Ahmed',role:'client',passwordSalt:b.salt,passwordHash:b.hash,createdAt:now()}];db.workspaces=[{id:'ws_demo',ownerId:'u_creator',name:'CINESET Studio',slug:'cineset-studio',createdAt:now()}];
  const p={id:'p_bmw',ownerId:'u_creator',clientId:'u_client',name:'BMW Campaign',type:'Commercial',status:'Reviewing',progress:78,createdAt:now()};db.projects=[p];
  ['Treatment','Storyboard','First Cut','Final Delivery'].forEach((stage,i)=>db.approvals.push({id:id('ap'),projectId:p.id,stage,status:i<2?'Approved':i===2?'Reviewing':'Pending',updatedAt:now()}));
@@ -66,7 +73,6 @@ function seed(){if(!DEMO||db.users.length)return;const a=hash('Demo1234'),b=hash
  db.contracts=[{id:id('ctr'),ownerId:'u_creator',projectId:p.id,clientId:'u_client',title:'Production Agreement',status:'Pending Signature',content:'Production agreement placeholder',createdAt:now()}];
  notify('u_creator','system','Welcome to CINESET','Your workspace is ready.','p_bmw');
  save();}
-seed();
 
 const rate=new Map();
 function rateLimit(req){const key=(req.socket.remoteAddress||'unknown')+'|'+(req.url||'');const t=Date.now();let a=rate.get(key)||[];a=a.filter(x=>t-x<60000);a.push(t);rate.set(key,a);return a.length<=120;}
@@ -76,7 +82,7 @@ async function route(req,res){
   Object.assign(res.headers={},securityHeaders());
   if(!rateLimit(req))return json(res,429,{error:'Too many requests'});
   const u=userFromReq(req); const parsed=new URL(req.url,'http://localhost'); const p=parsed.pathname; const method=req.method;
-  if(method==='GET'&&p==='/api/health')return json(res,200,{ok:true,service:'CINESET',version:VERSION,env:NODE_ENV,demo:DEMO});
+  if(method==='GET'&&p==='/api/health')return json(res,200,{ok:true,service:'CINESET',version:VERSION,env:NODE_ENV,demo:DEMO,integrations:{database:store.kind,storage:files.kind,email:mailer.enabled,ai:ai.kind}});
   if(method==='GET'&&p==='/api/auth/me')return u?json(res,200,{user:publicUser(u)}):json(res,401,{error:'Unauthorized'});
   if(method==='POST'&&p==='/api/auth/login'){try{const b=await readJson(req);const email=String(b.email||'').trim().toLowerCase();const user=db.users.find(x=>x.email.toLowerCase()===email);if(!user||(!DEMO&&DEMO_EMAIL.test(user.email))||!verify(String(b.password||''),user))return json(res,401,{error:'Invalid email or password'});return json(res,200,{user:publicUser(user)},{'Set-Cookie':sessionCookie(user.id)});}catch(e){return json(res,e.status||400,{error:e.message});}}
   if(method==='POST'&&p==='/api/auth/logout')return json(res,200,{ok:true},{'Set-Cookie':clearCookie()});
@@ -97,12 +103,12 @@ async function route(req,res){
   if(method==='PATCH'&&m){if(!u)return json(res,401,{error:'Unauthorized'});const a=db.approvals.find(x=>x.id===m[1]),q=a&&db.projects.find(x=>x.id===a.projectId);if(!a||!projectForUser(u,q))return json(res,404,{error:'Not found'});const b=await readJson(req);const allowed=u.role==='client'?['Approved','Changes Requested']:['Approved','Reviewing','Pending','Changes Requested'];if(!allowed.includes(b.status))return json(res,400,{error:'Invalid status'});a.status=b.status;a.updatedAt=now();if(a.status==='Approved'){const remain=db.approvals.filter(x=>x.projectId===q.id&&x.status!=='Approved').length;q.progress=Math.min(100,q.progress+25);q.status=remain===0?'Delivered':'Reviewing';}if(q.ownerId&&u.role==='client')notify(q.ownerId,'approval','Approval updated',`${u.name} updated ${a.stage} to ${a.status}.`,q.id);save();return json(res,200,a);}
 
   m=p.match(/^\/api\/projects\/([^/]+)\/files$/);
-  if(method==='POST'&&m){if(!u)return json(res,401,{error:'Unauthorized'});const q=db.projects.find(x=>x.id===m[1]);if(!q||!projectForUser(u,q)||u.role!=='creator')return json(res,403,{error:'Creator only'});const filename=safeName(req.headers['x-filename']);const contentLength=Number(req.headers['content-length']||0);if(contentLength>MAX_UPLOAD)return json(res,413,{error:`File exceeds ${process.env.MAX_UPLOAD_MB||500} MB limit`});const stored=id('asset')+path.extname(filename);const target=path.join(UPLOADS,stored);let size=0;const out=fs.createWriteStream(target);let aborted=false;req.on('data',c=>{size+=c.length;if(size>MAX_UPLOAD&&!aborted){aborted=true;req.destroy(new Error('Too large'));try{fs.unlinkSync(target);}catch{}}});req.pipe(out);return await new Promise(resolve=>{out.on('finish',()=>{if(aborted)return resolve();const f={id:id('file'),projectId:q.id,ownerId:q.ownerId,uploadedBy:u.id,originalName:filename,storedName:stored,mime:req.headers['content-type']||mime(filename),size,createdAt:now()};db.files.push(f);if(q.clientId)notify(q.clientId,'file','New file',`${filename} was added to ${q.name}.`,q.id);save();json(res,200,{id:f.id,originalName:f.originalName,mime:f.mime,size:f.size});resolve();});out.on('error',e=>{try{fs.unlinkSync(target);}catch{};json(res,500,{error:e.message});resolve();});});}
+  if(method==='POST'&&m){if(!u)return json(res,401,{error:'Unauthorized'});const q=db.projects.find(x=>x.id===m[1]);if(!q||!projectForUser(u,q)||u.role!=='creator')return json(res,403,{error:'Creator only'});const filename=safeName(req.headers['x-filename']);const contentLength=Number(req.headers['content-length']||0);if(contentLength>MAX_UPLOAD)return json(res,413,{error:`File exceeds ${process.env.MAX_UPLOAD_MB||500} MB limit`});const stored=id('asset')+path.extname(filename);const target=path.join(UPLOADS,stored+'.part');let size=0;const out=fs.createWriteStream(target);let aborted=false;req.on('data',c=>{size+=c.length;if(size>MAX_UPLOAD&&!aborted){aborted=true;req.destroy(new Error('Too large'));try{fs.unlinkSync(target);}catch{}}});req.pipe(out);return await new Promise(resolve=>{out.on('finish',async()=>{if(aborted)return resolve();const type=req.headers['content-type']||mime(filename);try{await files.put(stored,target,type);}catch(e){try{fs.unlinkSync(target);}catch{};json(res,e.status||502,{error:e.message});return resolve();}const f={id:id('file'),projectId:q.id,ownerId:q.ownerId,uploadedBy:u.id,originalName:filename,storedName:stored,mime:type,size,createdAt:now()};db.files.push(f);if(q.clientId)notify(q.clientId,'file','New file',`${filename} was added to ${q.name}.`,q.id);save();json(res,200,{id:f.id,originalName:f.originalName,mime:f.mime,size:f.size});resolve();});out.on('error',e=>{try{fs.unlinkSync(target);}catch{};json(res,500,{error:e.message});resolve();});});}
   m=p.match(/^\/api\/files\/([^/]+)$/);
-  if(method==='GET'&&m){if(!u)return json(res,401,{error:'Unauthorized'});const f=db.files.find(x=>x.id===m[1]),q=f&&db.projects.find(x=>x.id===f.projectId);if(!f||!projectForUser(u,q))return json(res,404,{error:'Not found'});const file=path.join(UPLOADS,f.storedName);if(!fs.existsSync(file))return json(res,404,{error:'File missing'});const stat=fs.statSync(file);const range=req.headers.range;if(range){const match=/bytes=(\d+)-(\d*)/.exec(range);if(match){const start=Number(match[1]),end=match[2]?Number(match[2]):stat.size-1;if(start<0||start>=stat.size)return res.writeHead(416).end();const chunkEnd=Math.min(end,stat.size-1);res.writeHead(206,{...securityHeaders(),'Content-Range':`bytes ${start}-${chunkEnd}/${stat.size}`,'Accept-Ranges':'bytes','Content-Length':chunkEnd-start+1,'Content-Type':f.mime});return fs.createReadStream(file,{start,end:chunkEnd}).pipe(res);}}res.writeHead(200,{...securityHeaders(),'Content-Length':stat.size,'Content-Type':f.mime,'Content-Disposition':`inline; filename="${f.originalName.replace(/"/g,'')}"`,'Accept-Ranges':'bytes'});return fs.createReadStream(file).pipe(res);}
+  if(method==='GET'&&m){if(!u)return json(res,401,{error:'Unauthorized'});const f=db.files.find(x=>x.id===m[1]),q=f&&db.projects.find(x=>x.id===f.projectId);if(!f||!projectForUser(u,q))return json(res,404,{error:'Not found'});const size=Number(f.size)||0;let start=0,end=size-1,status=200;const range=/bytes=(\d+)-(\d*)/.exec(req.headers.range||'');if(range){start=Number(range[1]);end=range[2]?Math.min(Number(range[2]),size-1):size-1;if(start>=size||start>end){res.writeHead(416,{...securityHeaders(),'Content-Range':`bytes */${size}`});return res.end();}status=206;}const headers={...securityHeaders(),'Content-Type':f.mime,'Accept-Ranges':'bytes','Content-Length':size?end-start+1:0,'Content-Disposition':`inline; filename="${f.originalName.replace(/"/g,'')}"`};if(status===206)headers['Content-Range']=`bytes ${start}-${end}/${size}`;if(!size){res.writeHead(200,headers);return res.end();}let stream;try{stream=await files.read(f.storedName,start,end);}catch(e){return json(res,e.status||502,{error:e.message});}res.writeHead(status,headers);stream.on('error',()=>res.destroy());return stream.pipe(res);}
 
   if(method==='GET'&&p==='/api/clients'){if(!u||u.role!=='creator')return json(res,403,{error:'Creator only'});const allowed=creatorClientIds(u);return json(res,200,db.users.filter(x=>x.role==='client'&&allowed.has(x.id)).map(c=>({id:c.id,name:c.name,email:c.email,projects:db.projects.filter(q=>q.ownerId===u.id&&q.clientId===c.id).length})));}
-  if(method==='POST'&&p==='/api/invites'){if(!u||u.role!=='creator')return json(res,403,{error:'Creator only'});try{const b=await readJson(req);const email=String(b.email||'').trim().toLowerCase();if(!/^\S+@\S+\.\S+$/.test(email))return json(res,400,{error:'Valid email required'});const invite={id:id('invite'),ownerId:u.id,email,token:crypto.randomBytes(24).toString('hex'),expiresAt:Date.now()+7*86400000,createdAt:now()};db.invites.push(invite);save();return json(res,200,{inviteUrl:`/invite/${invite.token}`,expiresAt:invite.expiresAt});}catch(e){return json(res,e.status||400,{error:e.message});}}
+  if(method==='POST'&&p==='/api/invites'){if(!u||u.role!=='creator')return json(res,403,{error:'Creator only'});try{const b=await readJson(req);const email=String(b.email||'').trim().toLowerCase();if(!/^\S+@\S+\.\S+$/.test(email))return json(res,400,{error:'Valid email required'});const invite={id:id('invite'),ownerId:u.id,email,token:crypto.randomBytes(24).toString('hex'),expiresAt:Date.now()+7*86400000,createdAt:now()};db.invites.push(invite);save();const inviteUrl=`/invite/${invite.token}`;const emailed=mailer.enabled&&await mailer.send({to:email,subject:`${u.name} invited you to CINESET`,text:`${u.name} invited you to their CINESET production workspace.\n\nAccept the invite: ${APP_BASE_URL}${inviteUrl}\n\nThis link expires in 7 days.`});return json(res,200,{inviteUrl,expiresAt:invite.expiresAt,emailed});}catch(e){return json(res,e.status||400,{error:e.message});}}
   m=p.match(/^\/api\/invites\/([^/]+)$/); if(method==='GET'&&m){const inv=db.invites.find(x=>x.token===m[1]);if(!inv||inv.acceptedAt||Date.now()>inv.expiresAt)return json(res,404,{error:'Invite invalid or expired'});return json(res,200,{email:inv.email,expiresAt:inv.expiresAt,existing:db.users.some(x=>x.email===inv.email),ownerName:db.users.find(x=>x.id===inv.ownerId)?.name||'Creator'});}
   if(method==='POST'&&p.startsWith('/api/invites/')&&p.endsWith('/accept')){const token=p.split('/')[3];const inv=db.invites.find(x=>x.token===token);if(!inv||inv.acceptedAt||Date.now()>inv.expiresAt)return json(res,404,{error:'Invite invalid or expired'});try{const b=await readJson(req);const email=inv.email;const name=String(b.name||'').trim();const password=String(b.password||'');let user=db.users.find(x=>x.email===email);if(user&&user.role!=='client')return json(res,409,{error:'Email belongs to a creator account'});if(user){if(!verify(password,user))return json(res,401,{error:'Incorrect password for your existing account'});}else{if(name.length<2||password.length<8)return json(res,400,{error:'Name and password (8+ chars) required'});const h=hash(password);user={id:id('user'),email,name,role:'client',passwordSalt:h.salt,passwordHash:h.hash,createdAt:now()};db.users.push(user);}if(!db.team.some(t=>t.ownerId===inv.ownerId&&t.memberUserId===user.id))db.team.push({id:id('team'),ownerId:inv.ownerId,memberUserId:user.id,role:'client',permissions:{projects:true,review:true,files:true,portfolio:false},createdAt:now()});inv.acceptedAt=now();save();return json(res,200,{user:publicUser(user)},{'Set-Cookie':sessionCookie(user.id)});}catch(e){return json(res,e.status||400,{error:e.message});}}
 
@@ -135,7 +141,7 @@ async function route(req,res){
   if(method==='GET'&&p==='/api/notifications'){if(!u)return json(res,401,{error:'Unauthorized'});return json(res,200,db.notifications.filter(n=>n.userId===u.id));}
   m=p.match(/^\/api\/notifications\/([^/]+)$/); if(method==='PATCH'&&m){if(!u)return json(res,401,{error:'Unauthorized'});const n=db.notifications.find(x=>x.id===m[1]&&x.userId===u.id);if(!n)return json(res,404,{error:'Not found'});n.read=true;save();return json(res,200,n);}
 
-  if(method==='POST'&&p==='/api/ai/production-plan'){if(!u)return json(res,401,{error:'Unauthorized'});try{const b=await readJson(req);const brief=String(b.brief||'').trim();if(!brief)return json(res,400,{error:'Brief required'});const plan={id:id('ai'),ownerId:u.id,brief,createdAt:now(),result:{treatment:`Visual direction for: ${brief}`,shots:['Establishing shot','Hero movement','Detail insert','Performance / product moment','Closing wide'],lighting:'Motivated key + negative fill + soft backlight where appropriate.',camera:'Use the focal length that matches the emotional distance; keep movement intentional.',checklist:['Confirm location access','Prepare camera package','Lock talent / crew call time','Prepare backup media','Confirm delivery specs']}};db.aiPlans.unshift(plan);save();return json(res,200,plan);}catch(e){return json(res,e.status||400,{error:e.message});}}
+  if(method==='POST'&&p==='/api/ai/production-plan'){if(!u)return json(res,401,{error:'Unauthorized'});try{const b=await readJson(req);const brief=String(b.brief||'').trim();if(!brief)return json(res,400,{error:'Brief required'});if(brief.length>4000)return json(res,400,{error:'Brief is too long (4000 characters max)'});if(ai.kind!=='baseline'&&!aiAllowed(u.id))return json(res,429,{error:'AI limit reached. Try again later.'});const out=await ai.plan(brief);const plan={id:id('ai'),ownerId:u.id,brief,source:out.source,model:out.model,createdAt:now(),result:out.result};db.aiPlans.unshift(plan);db.aiPlans=db.aiPlans.slice(0,1000);save();return json(res,200,plan);}catch(e){return json(res,e.status||400,{error:e.message});}}
 
   if(method==='GET'&&p.startsWith('/invite/')){const token=p.split('/')[2];res.writeHead(200,{...securityHeaders(),'Content-Type':'text/html; charset=utf-8'});return fs.createReadStream(path.join(PUBLIC,'invite.html')).pipe(res);}
   if(method==='GET'&&p.startsWith('/p/')){res.writeHead(200,{...securityHeaders(),'Content-Type':'text/html; charset=utf-8'});return fs.createReadStream(path.join(PUBLIC,'portfolio.html')).pipe(res);}
@@ -144,5 +150,15 @@ async function route(req,res){
   return text(res,404,'Not found');
 }
 function publicUser(u){if(!u)return null;return{id:u.id,email:u.email,name:u.name,role:u.role};}
-const server=http.createServer((req,res)=>route(req,res).catch(e=>{console.error(e);if(!res.headersSent)json(res,e.status||500,{error:e.message||'Server error'});}));
-server.listen(PORT,()=>console.log(`CINESET running on http://localhost:${PORT}`));
+async function main(){
+  store=await openStore({empty,dbPath:DB_PATH});db=store.db;save=store.save;
+  files=openFiles({uploadsDir:UPLOADS});mailer=openMailer();ai=openAI();
+  seed();
+  if(NODE_ENV==='production'){if(store.kind==='json')console.warn('Warning: DATABASE_URL is not set; data is stored in a local JSON file.');if(files.kind==='local')console.warn('Warning: STORAGE_BUCKET is not set; uploads are stored on local disk.');if(mailer.enabled&&!process.env.APP_BASE_URL)console.warn('Warning: APP_BASE_URL is not set; links in emails will point to localhost.');}
+  console.log(`Integrations: database=${store.kind} storage=${files.kind} email=${mailer.enabled?'smtp':'off'} ai=${ai.kind}${ai.model?' ('+ai.model+')':''}`);
+  const server=http.createServer((req,res)=>route(req,res).catch(e=>{console.error(e);if(!res.headersSent)json(res,e.status||500,{error:e.message||'Server error'});}));
+  server.listen(PORT,()=>console.log(`CINESET running on http://localhost:${PORT}`));
+  // Finish pending database writes before the host stops the process.
+  for(const sig of ['SIGTERM','SIGINT'])process.once(sig,()=>{server.close();store.close().catch(e=>console.error(e.message)).finally(()=>process.exit(0));});
+}
+main().catch(e=>{console.error('CINESET failed to start:',e.message);process.exit(1);});
