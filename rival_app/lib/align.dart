@@ -2,12 +2,16 @@ import 'dart:ui';
 
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
+import 'brand.dart';
 import 'models.dart';
 
-/// محاذاة تلقائية: يكشف الوجه بالذكاء الاصطناعي على التلفون (ML Kit، بدون إنترنت)
-/// ويأخذ زاويتي الفم كنقطتي محاذاة. إذا ما لگى وجه (صور داخل الفم مثلاً) يرجع null
-/// والمستخدم يحدد النقطتين بيده.
+/// محاذاة تلقائية: يكشف الوجه بالذكاء الاصطناعي على التلفون (ML Kit، بدون إنترنت).
+/// للأسنان يأخذ زاويتي الفم، وللتجميل العينين. إذا ما لگى وجه (صور داخل الفم
+/// مثلاً) يرجع null والطبيب يحدد النقطتين بإيده.
 class AutoAligner {
+  final AlignTarget target;
+  AutoAligner(this.target);
+
   final _detector = FaceDetector(
     options: FaceDetectorOptions(
       enableLandmarks: true,
@@ -26,8 +30,11 @@ class AutoAligner {
       ),
     );
     final lm = faces.first.landmarks;
-    final left = lm[FaceLandmarkType.leftMouth]?.position;
-    final right = lm[FaceLandmarkType.rightMouth]?.position;
+    final (l, r) = target == AlignTarget.mouth
+        ? (FaceLandmarkType.leftMouth, FaceLandmarkType.rightMouth)
+        : (FaceLandmarkType.leftEye, FaceLandmarkType.rightEye);
+    final left = lm[l]?.position;
+    final right = lm[r]?.position;
     if (left == null || right == null) return null;
     return photo.withPoints(
       Offset(left.x.toDouble(), left.y.toDouble()),

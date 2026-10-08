@@ -3,9 +3,10 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
+import 'package:flutter/services.dart';
 
 import 'models.dart';
-import 'theme.dart';
+import 'brand.dart';
 
 enum PostFormat {
   portrait(1080, 1350, 'منشور 4:5'),
@@ -44,6 +45,19 @@ Future<ui.Image> loadImage(String path) async {
 }
 
 void evictImage(String path) => _cache.remove(path)?.dispose();
+
+void clearImageCache() => _cache.clear();
+
+/// صورة من ملفات التطبيق (الشعارات).
+Future<ui.Image> loadAssetImage(String asset) async {
+  final cached = _cache[asset];
+  if (cached != null) return cached;
+  final data = await rootBundle.load(asset);
+  final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+  final image = (await codec.getNextFrame()).image;
+  _cache[asset] = image;
+  return image;
+}
 
 /// تحويل من بكسلات الصورة لمكانها داخل الخلية: نقطتا المحاذاة تقعان بنفس
 /// المكان بكل الخلايا (منتصفهما بالوسط، والخط بينهما أفقي وبنفس الطول).
@@ -131,33 +145,68 @@ void paintPhoto(Canvas canvas, Rect cell, ui.Image img, Photo p, Framing f) {
   canvas.restore();
 }
 
-void paintLabel(Canvas canvas, Rect cell, String text, double unit) {
-  final style = ui.ParagraphStyle(
-    textDirection: TextDirection.rtl,
-    textAlign: TextAlign.center,
-    fontSize: unit * 0.042,
-    fontWeight: FontWeight.w600,
-  );
-  final builder = ui.ParagraphBuilder(style)
-    ..pushStyle(ui.TextStyle(color: const Color(0xFF1A1408)))
-    ..addText(text);
-  final para = builder.build()
-    ..layout(ui.ParagraphConstraints(width: cell.width));
-  final w = para.longestLine + unit * 0.06;
-  final h = para.height + unit * 0.018;
-  final pill = Rect.fromCenter(
-    center: Offset(cell.center.dx, cell.top + unit * 0.05 + h / 2),
-    width: w,
-    height: h,
-  );
+/// شارة "قبل" / "بعد". قبل: غامقة، بعد: بلون القسم.
+void paintLabel(
+  Canvas canvas,
+  Rect cell,
+  String text,
+  double unit, {
+  required Color bg,
+  required Color fg,
+  Alignment align = Alignment.topCenter,
+}) {
+  final para = _paragraph(text, unit * 0.04, fg, FontWeight.w800, cell.width);
+  final w = para.longestLine + unit * 0.07;
+  final h = para.height + unit * 0.022;
+  final margin = unit * 0.05;
+  final cx = switch (align.x) {
+    < 0 => cell.left + margin + w / 2,
+    > 0 => cell.right - margin - w / 2,
+    _ => cell.center.dx,
+  };
+  final cy = align.y < 0
+      ? cell.top + margin + h / 2
+      : cell.bottom - margin - h / 2;
+  final pill = Rect.fromCenter(center: Offset(cx, cy), width: w, height: h);
   canvas.drawRRect(
     RRect.fromRectAndRadius(pill, Radius.circular(h / 2)),
-    Paint()..color = kGold,
+    Paint()..color = bg,
   );
   canvas.drawParagraph(
     para,
-    Offset(cell.left, pill.top + (h - para.height) / 2),
+    Offset(pill.center.dx - para.width / 2, pill.top + (h - para.height) / 2),
   );
+}
+
+ui.Paragraph _paragraph(
+  String text,
+  double size,
+  Color color,
+  FontWeight weight,
+  double width,
+) {
+  ui.Paragraph build(double w) {
+    final builder =
+        ui.ParagraphBuilder(
+            ui.ParagraphStyle(
+              textDirection: TextDirection.rtl,
+              textAlign: TextAlign.center,
+              fontFamily: kFontUi,
+              fontSize: size,
+              fontWeight: weight,
+              maxLines: 1,
+            ),
+          )
+          ..pushStyle(ui.TextStyle(color: color, fontFamily: kFontUi))
+          ..addText(text);
+    return builder.build()..layout(ui.ParagraphConstraints(width: w));
+  }
+
+  // نقيس عرض السطر الفعلي أولاً، وبعدين نبني فقرة بنفس العرض حتى نوسّط بدقة.
+  final measured = build(width);
+  final w = measured.longestLine.ceilToDouble() + 1;
+  measured.dispose();
+  return build(w);
 }
 
 void paintOverlay(Canvas canvas, Size size, ui.Image? overlay) {
@@ -170,13 +219,94 @@ void paintOverlay(Canvas canvas, Size size, ui.Image? overlay) {
   );
 }
 
+/// إطار الهوية المدمج: تدرّج فوق وجوّه، إطار داخلي رفيع، الشعار المعكوس فوق،
+/// نجوم اللمعة، وشارة باسم الطبيب جوّه.
+class BrandFrame {
+  final Brand brand;
+  final ui.Image logo; // النسخة المعكوسة (للخلفيات الغامقة)
+  final String caption;
+  const BrandFrame(this.brand, this.logo, this.caption);
+}
+
+void paintBrandFrame(Canvas canvas, Size size, BrandFrame f) {
+  final w = size.width, h = size.height;
+  final unit = math.min(w, h);
+  final shade = f.brand.dark;
+  canvas.drawRect(
+    Rect.fromLTWH(0, 0, w, h * 0.2),
+    Paint()
+      ..shader = ui.Gradient.linear(Offset.zero, Offset(0, h * 0.2), [
+        shade.withValues(alpha: 0.6),
+        shade.withValues(alpha: 0),
+      ]),
+  );
+  canvas.drawRect(
+    Rect.fromLTWH(0, h * 0.76, w, h * 0.24),
+    Paint()
+      ..shader = ui.Gradient.linear(Offset(0, h * 0.76), Offset(0, h), [
+        shade.withValues(alpha: 0),
+        shade.withValues(alpha: 0.7),
+      ]),
+  );
+  final inset = unit * 0.035;
+  canvas.drawRRect(
+    RRect.fromRectAndRadius(
+      Rect.fromLTWH(inset, inset, w - inset * 2, h - inset * 2),
+      Radius.circular(unit * 0.045),
+    ),
+    Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = unit * 0.0025
+      ..color = f.brand.accent.withValues(alpha: 0.85),
+  );
+  // الشعار بالنص فوق، ارتفاعه حوالي ١٢٠ بكسل من ١٠٨٠.
+  final logoH = unit * 0.11;
+  final logoW = logoH * f.logo.width / f.logo.height;
+  canvas.drawImageRect(
+    f.logo,
+    Rect.fromLTWH(0, 0, f.logo.width.toDouble(), f.logo.height.toDouble()),
+    Rect.fromLTWH((w - logoW) / 2, inset * 1.9, logoW, logoH),
+    Paint()..filterQuality = FilterQuality.high,
+  );
+  final star = Paint()..color = f.brand.accent;
+  _sparkle(canvas, Offset(w - inset * 2.6, inset * 2.8), unit * 0.018, star);
+  _sparkle(canvas, Offset(w - inset * 3.6, inset * 3.9), unit * 0.009, star);
+  _sparkle(canvas, Offset(inset * 2.4, h - inset * 2.4), unit * 0.011, star);
+  if (f.caption.isNotEmpty) {
+    paintLabel(
+      canvas,
+      Rect.fromLTWH(0, 0, w, h - inset),
+      f.caption,
+      unit * 0.85,
+      bg: f.brand.accent,
+      fg: f.brand.dark,
+      align: Alignment.bottomCenter,
+    );
+  }
+}
+
+/// نجمة لمعة رباعية.
+void _sparkle(Canvas canvas, Offset c, double r, Paint paint) {
+  final k = r * 0.22;
+  final path = Path()
+    ..moveTo(c.dx, c.dy - r)
+    ..quadraticBezierTo(c.dx + k, c.dy - k, c.dx + r, c.dy)
+    ..quadraticBezierTo(c.dx + k, c.dy + k, c.dx, c.dy + r)
+    ..quadraticBezierTo(c.dx - k, c.dy + k, c.dx - r, c.dy)
+    ..quadraticBezierTo(c.dx - k, c.dy - k, c.dx, c.dy - r)
+    ..close();
+  canvas.drawPath(path, paint);
+}
+
 class CompositeSpec {
   final ui.Image before, after;
   final Photo beforePhoto, afterPhoto;
+  final Brand brand;
   final PostFormat format;
   final Layout layout;
   final Framing framing;
   final ui.Image? overlay;
+  final BrandFrame? frame;
   final bool labels;
 
   const CompositeSpec({
@@ -184,21 +314,19 @@ class CompositeSpec {
     required this.after,
     required this.beforePhoto,
     required this.afterPhoto,
+    this.brand = dental,
     this.format = PostFormat.portrait,
     this.layout = Layout.sideBySide,
     this.framing = const Framing(),
     this.overlay,
+    this.frame,
     this.labels = true,
   });
 }
 
-/// صورة "قبل وبعد" بخليتين. نفس الدالة للمعاينة (scale صغير) وللتصدير (scale = 1).
-Future<ui.Image> renderComposite(CompositeSpec s, {double scale = 1}) {
-  final size = s.format.size;
-  final recorder = ui.PictureRecorder();
-  final canvas = Canvas(recorder)..scale(scale);
+(Rect, Rect) cellsFor(Size size, Layout layout) {
   final gap = size.width * 0.006;
-  final (Rect first, Rect second) = s.layout == Layout.sideBySide
+  return layout == Layout.sideBySide
       ? (
           Rect.fromLTWH(0, 0, (size.width - gap) / 2, size.height),
           Rect.fromLTWH(
@@ -217,51 +345,117 @@ Future<ui.Image> renderComposite(CompositeSpec s, {double scale = 1}) {
             (size.height - gap) / 2,
           ),
         );
-  canvas.drawRect(Offset.zero & size, Paint()..color = kGold);
+}
+
+/// صورة "قبل وبعد" بخليتين. نفس الدالة للمعاينة (scale صغير) وللتصدير (scale = 1).
+Future<ui.Image> renderComposite(CompositeSpec s, {double scale = 1}) {
+  final size = s.format.size;
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder)..scale(scale);
+  final (first, second) = cellsFor(size, s.layout);
+  canvas.drawRect(Offset.zero & size, Paint()..color = s.brand.accent);
   // بالعربي "قبل" تكون باليمين (أو بالأعلى).
-  final beforeCell = s.layout == Layout.sideBySide ? second : first;
-  final afterCell = s.layout == Layout.sideBySide ? first : second;
+  final side = s.layout == Layout.sideBySide;
+  final beforeCell = side ? second : first;
+  final afterCell = side ? first : second;
   paintPhoto(canvas, beforeCell, s.before, s.beforePhoto, s.framing);
   paintPhoto(canvas, afterCell, s.after, s.afterPhoto, s.framing);
   if (s.labels) {
-    paintLabel(canvas, beforeCell, 'قبل', size.width);
-    paintLabel(canvas, afterCell, 'بعد', size.width);
+    // مع إطار الهوية: الشعار فوق بالنص، فالشارات تنزل لجوّه (أو للزاوية).
+    final align = s.frame == null
+        ? Alignment.topCenter
+        : side
+        ? Alignment.bottomCenter
+        : Alignment.topRight;
+    final lift = s.frame != null && side ? size.height * 0.08 : 0.0;
+    paintLabel(
+      canvas,
+      Rect.fromLTRB(
+        beforeCell.left,
+        beforeCell.top,
+        beforeCell.right,
+        beforeCell.bottom - lift,
+      ).deflate(s.frame == null ? 0 : size.width * 0.03),
+      'قبل',
+      size.width,
+      bg: s.brand.dark,
+      fg: const Color(0xFFFFFFFF),
+      align: align,
+    );
+    paintLabel(
+      canvas,
+      Rect.fromLTRB(
+        afterCell.left,
+        afterCell.top,
+        afterCell.right,
+        afterCell.bottom - lift,
+      ).deflate(s.frame == null ? 0 : size.width * 0.03),
+      'بعد',
+      size.width,
+      bg: s.brand.primary,
+      fg: const Color(0xFFFFFFFF),
+      align: align,
+    );
   }
   paintOverlay(canvas, size, s.overlay);
+  if (s.frame != null) paintBrandFrame(canvas, size, s.frame!);
   return recorder.endRecording().toImage(
     (size.width * scale).round(),
     (size.height * scale).round(),
   );
 }
 
-/// إطار واحد كامل الشاشة (للفيديو).
+/// إطار واحد كامل الشاشة (للفيديو). القالب والإطار يترسمون بطبقة منفصلة.
 Future<ui.Image> renderSingle({
   required ui.Image image,
   required Photo photo,
   required Size size,
   required Framing framing,
+  required Brand brand,
+  bool after = false,
+  bool label = true,
+  bool framed = false,
   ui.Image? overlay,
-  String? label,
+  BrandFrame? frame,
   double scale = 1,
 }) {
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder)..scale(scale);
   final cell = Offset.zero & size;
   paintPhoto(canvas, cell, image, photo, framing);
-  if (label != null) {
-    paintLabel(canvas, cell.deflate(size.width * 0.02), label, size.width);
+  if (label) {
+    paintLabel(
+      canvas,
+      framed || frame != null
+          ? Rect.fromLTWH(0, 0, size.width, size.height * 0.86)
+          : cell.deflate(size.width * 0.02),
+      after ? 'بعد' : 'قبل',
+      size.width,
+      bg: after ? brand.primary : brand.dark,
+      fg: const Color(0xFFFFFFFF),
+      align: framed || frame != null
+          ? Alignment.bottomCenter
+          : Alignment.topCenter,
+    );
   }
   paintOverlay(canvas, size, overlay);
+  if (frame != null) paintBrandFrame(canvas, size, frame);
   return recorder.endRecording().toImage(
     (size.width * scale).round(),
     (size.height * scale).round(),
   );
 }
 
-/// القالب لوحده بمقاس الفيديو (شفاف)، حتى يبقى ثابت فوق الإطارات.
-Future<ui.Image> renderOverlayLayer(Size size, ui.Image overlay) {
+/// الطبقة الثابتة فوق الفيديو (القالب وإطار الهوية) بمقاس الفيديو، شفافة.
+Future<ui.Image> renderOverlayLayer(
+  Size size, {
+  ui.Image? overlay,
+  BrandFrame? frame,
+}) {
   final recorder = ui.PictureRecorder();
-  paintOverlay(Canvas(recorder), size, overlay);
+  final canvas = Canvas(recorder);
+  paintOverlay(canvas, size, overlay);
+  if (frame != null) paintBrandFrame(canvas, size, frame);
   return recorder.endRecording().toImage(
     size.width.round(),
     size.height.round(),
@@ -272,4 +466,38 @@ Future<String> writePng(ui.Image image, String path) async {
   final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
   await File(path).writeAsBytes(bytes!.buffer.asUint8List());
   return path;
+}
+
+/// تُستخدم من التقرير: صورة قبل وبعد مربعة بدون إطار.
+Future<ui.Image?> renderReportComposite(CaseRecord c, Brand brand) async {
+  if (c.before == null || c.after == null) return null;
+  final before = await loadImage(c.before!.path);
+  final after = await loadImage(c.after!.path);
+  final format = PostFormat.square;
+  final (cell, _) = cellsFor(format.size, Layout.sideBySide);
+  final offsetY = brand.alignTarget == AlignTarget.eyes ? 0.08 : 0.0;
+  var z = 1.0;
+  for (final (img, photo) in [(before, c.before!), (after, c.after!)]) {
+    z = math.max(
+      z,
+      coverZoom(
+        cell,
+        Size(img.width.toDouble(), img.height.toDouble()),
+        photo,
+        offsetY,
+      ),
+    );
+  }
+  return renderComposite(
+    CompositeSpec(
+      before: before,
+      after: after,
+      beforePhoto: c.before!,
+      afterPhoto: c.after!,
+      brand: brand,
+      format: format,
+      framing: Framing(zoom: z.clamp(0.4, 2.5), offsetY: offsetY),
+    ),
+    scale: 0.7,
+  );
 }

@@ -6,7 +6,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../render.dart';
 import '../store.dart';
-import '../theme.dart';
+import '../brand.dart';
 import 'common.dart';
 
 /// اختيار القالب الشفاف (PNG) فوق التصميم.
@@ -22,6 +22,7 @@ class OverlayPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final overlays = Store.instance.overlays;
+    final b = context.brand;
     Widget tile(String? path) {
       final active = selected == path;
       return GestureDetector(
@@ -31,17 +32,17 @@ class OverlayPicker extends StatelessWidget {
           height: 80,
           margin: const EdgeInsets.only(left: 8),
           decoration: BoxDecoration(
-            color: kSurfaceHigh,
+            color: b.line.withValues(alpha: 0.6),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: active ? kGold : Colors.transparent,
+              color: active ? b.primary : Colors.transparent,
               width: 2,
             ),
           ),
           clipBehavior: Clip.antiAlias,
           child: path == null
-              ? const Center(
-                  child: Text('بدون', style: TextStyle(color: kMuted)),
+              ? Center(
+                  child: Text('بدون', style: TextStyle(color: b.muted)),
                 )
               : Image.file(File(path), fit: BoxFit.contain, cacheWidth: 200),
         ),
@@ -51,7 +52,7 @@ class OverlayPicker extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('القالب', style: TextStyle(color: kMuted)),
+        Text('القالب', style: TextStyle(color: b.muted)),
         const SizedBox(height: 6),
         SizedBox(
           height: 80,
@@ -61,11 +62,11 @@ class OverlayPicker extends StatelessWidget {
           ),
         ),
         if (overlays.isEmpty)
-          const Padding(
-            padding: EdgeInsets.only(top: 6),
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
             child: Text(
-              'ارفع قوالب PNG شفافة من تبويب "القوالب".',
-              style: TextStyle(color: kMuted, fontSize: 12),
+              'ارفع قوالب PNG شفافة من "المزيد ← القوالب".',
+              style: TextStyle(color: b.muted, fontSize: 12),
             ),
           ),
       ],
@@ -84,13 +85,14 @@ class FramingSliders extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final b = context.brand;
     return Column(
       children: [
         Row(
           children: [
-            const SizedBox(
+            SizedBox(
               width: 70,
-              child: Text('التقريب', style: TextStyle(color: kMuted)),
+              child: Text('التقريب', style: TextStyle(color: b.muted)),
             ),
             Expanded(
               child: Slider(
@@ -105,9 +107,9 @@ class FramingSliders extends StatelessWidget {
         ),
         Row(
           children: [
-            const SizedBox(
+            SizedBox(
               width: 70,
-              child: Text('الارتفاع', style: TextStyle(color: kMuted)),
+              child: Text('الارتفاع', style: TextStyle(color: b.muted)),
             ),
             Expanded(
               child: Slider(
@@ -136,11 +138,13 @@ Future<void> saveToGallery(
       await Gal.requestAccess(toAlbum: true);
     }
     if (video) {
-      await Gal.putVideo(path, album: 'Rival');
+      await Gal.putVideo(path, album: Store.instance.brand.latinName);
     } else {
-      await Gal.putImage(path, album: 'Rival');
+      await Gal.putImage(path, album: Store.instance.brand.latinName);
     }
-    if (context.mounted) toast(context, 'انحفظ بالمعرض (ألبوم Rival)');
+    if (context.mounted) {
+      toast(context, 'انحفظ بالمعرض (ألبوم ${Store.instance.brand.latinName})');
+    }
   } on GalException catch (e) {
     if (context.mounted) toast(context, 'ما انحفظ: ${e.type.message}');
   }

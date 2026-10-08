@@ -1,21 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../brand.dart';
 import '../models.dart';
+import '../report_pdf.dart';
 import '../store.dart';
-import '../theme.dart';
 import 'case_screen.dart';
 import 'common.dart';
 import 'patients_screen.dart';
-
-const treatments = [
-  'ابتسامة هوليود',
-  'فينير',
-  'تقويم',
-  'تبييض',
-  'زراعة',
-  'حشوات تجميلية',
-];
 
 /// 07xxxxxxxxx -> 9647xxxxxxxxx (للواتساب).
 String internationalPhone(String phone) {
@@ -25,20 +17,26 @@ String internationalPhone(String phone) {
   return digits;
 }
 
+Future<void> openWhatsApp(String phone) => launchUrl(
+  Uri.parse('https://wa.me/${internationalPhone(phone)}'),
+  mode: LaunchMode.externalApplication,
+);
+
+Future<void> callPhone(String phone) =>
+    launchUrl(Uri.parse('tel:${phone.replaceAll(' ', '')}'));
+
 class PatientScreen extends StatelessWidget {
   final Patient patient;
   const PatientScreen({super.key, required this.patient});
 
   Future<void> _newCase(BuildContext context) async {
-    final title = await showDialog<String>(
-      context: context,
-      builder: (_) => const _CaseTitleDialog(),
-    );
-    if (title == null) return;
+    final r = await showNewCaseSheet(context);
+    if (r == null) return;
     final c = CaseRecord(
       id: Store.newId(),
-      title: title,
+      title: r.$1,
       created: DateTime.now().millisecondsSinceEpoch,
+      doctorId: r.$2,
     );
     patient.cases.insert(0, c);
     await Store.instance.save();
@@ -52,38 +50,46 @@ class PatientScreen extends StatelessWidget {
   }
 
   Future<void> _menu(BuildContext context, String action) async {
-    if (action == 'edit') {
-      final r = await showPatientDialog(context, existing: patient);
-      if (r == null) return;
-      patient
-        ..name = r.$1
-        ..phone = r.$2;
-      await Store.instance.save();
-    } else if (action == 'delete') {
-      final ok = await confirm(
-        context,
-        'حذف ${patient.name}؟',
-        'راح تنحذف كل حالاته وصوره من التطبيق. ما يمكن التراجع.',
-      );
-      if (!ok) return;
-      await Store.instance.deletePatient(patient);
-      if (context.mounted) Navigator.pop(context);
+    final b = context.brand;
+    switch (action) {
+      case 'edit':
+        final r = await showPatientDialog(context, existing: patient);
+        if (r == null) return;
+        patient
+          ..name = r.name
+          ..phone = r.phone
+          ..gender = r.gender ?? patient.gender
+          ..birthYear = r.birthYear;
+        await Store.instance.save();
+      case 'report':
+        await shareReport(context, () => patientReport(b, patient));
+      case 'delete':
+        final ok = await confirm(
+          context,
+          'حذف ${patient.name}؟',
+          'راح تنحذف كل الحالات والصور من التطبيق. ما يمكن التراجع.',
+        );
+        if (!ok) return;
+        await Store.instance.deletePatient(patient);
+        if (context.mounted) Navigator.pop(context);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final b = context.brand;
     return ListenableBuilder(
       listenable: Store.instance,
       builder: (context, _) => Scaffold(
         appBar: AppBar(
-          title: Text(patient.name),
+          title: Text('ملف ${b.patient == 'مراجعة' ? 'المراجعة' : 'المراجع'}'),
           actions: [
             PopupMenuButton<String>(
               onSelected: (a) => _menu(context, a),
               itemBuilder: (_) => const [
-                PopupMenuItem(value: 'edit', child: Text('تعديل')),
-                PopupMenuItem(value: 'delete', child: Text('حذف المراجع')),
+                PopupMenuItem(value: 'edit', child: Text('تعديل البيانات')),
+                PopupMenuItem(value: 'report', child: Text('تقرير كامل PDF')),
+                PopupMenuItem(value: 'delete', child: Text('حذف')),
               ],
             ),
           ],
@@ -95,59 +101,86 @@ class PatientScreen extends StatelessWidget {
           label: const Text('حالة جديدة'),
         ),
         body: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
           children: [
-            if (patient.phone.isNotEmpty) ...[
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Row(
+            HeroPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    patient.name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
                     children: [
-                      const Icon(Icons.phone_outlined, color: kGold),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          patient.phone,
-                          textDirection: TextDirection.ltr,
-                          textAlign: TextAlign.right,
-                          style: const TextStyle(fontSize: 16),
+                      if (patient.age != null)
+                        Pill(
+                          '${ar(patient.age!)} سنة',
+                          bg: b.accent,
+                          fg: b.dark,
                         ),
-                      ),
-                      IconButton.filledTonal(
-                        tooltip: 'اتصال',
-                        onPressed: () =>
-                            launchUrl(Uri.parse('tel:${patient.phone}')),
-                        icon: const Icon(Icons.call),
-                      ),
-                      IconButton.filledTonal(
-                        tooltip: 'واتساب',
-                        onPressed: () => launchUrl(
-                          Uri.parse(
-                            'https://wa.me/${internationalPhone(patient.phone)}',
-                          ),
-                          mode: LaunchMode.externalApplication,
-                        ),
-                        icon: const Icon(Icons.chat_outlined),
+                      if (patient.gender != null && !b.feminine)
+                        Pill(patient.gender!.label, bg: b.accent, fg: b.dark),
+                      Pill(
+                        '${b.f('مراجع', 'مراجعة')} منذ ${arDate(patient.created)}',
+                        bg: Colors.white.withValues(alpha: 0.16),
                       ),
                     ],
                   ),
-                ),
+                  if (patient.phone.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            patient.phone,
+                            textDirection: TextDirection.ltr,
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        _RoundButton(
+                          Icons.call,
+                          () => callPhone(patient.phone),
+                        ),
+                        const SizedBox(width: 8),
+                        _RoundButton(
+                          Icons.chat,
+                          () => openWhatsApp(patient.phone),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
               ),
-              const SizedBox(height: 16),
-            ],
+            ),
+            SectionHeader('الحالات (${ar(patient.cases.length)})'),
             if (patient.cases.isEmpty)
-              const Padding(
-                padding: EdgeInsets.only(top: 60),
-                child: EmptyState(
-                  icon: Icons.photo_library_outlined,
-                  title: 'ماكو حالات',
-                  body: 'اضغط "حالة جديدة" وصوّر قبل العلاج.',
+              EmptyState(
+                icon: Icons.photo_library_outlined,
+                title: 'ماكو حالات',
+                body: b.f(
+                  'اضغط "حالة جديدة" وصوّر قبل العلاج.',
+                  'اضغطي "حالة جديدة" وصوّري قبل الجلسة.',
                 ),
               ),
             for (final c in patient.cases) ...[
-              _CaseTile(patient, c),
+              CaseTile(patient: patient, record: c),
               const SizedBox(height: 10),
             ],
+            SectionHeader('ملاحظات'),
+            _NotesField(patient),
           ],
         ),
       ),
@@ -155,66 +188,145 @@ class PatientScreen extends StatelessWidget {
   }
 }
 
-class _CaseTile extends StatelessWidget {
-  final Patient patient;
-  final CaseRecord c;
-  const _CaseTile(this.patient, this.c);
+class _RoundButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _RoundButton(this.icon, this.onTap);
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
+    final b = context.brand;
+    return Material(
+      color: b.accent,
+      shape: const CircleBorder(),
       child: InkWell(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => CaseScreen(patient: patient, record: c),
-          ),
-        ),
+        customBorder: const CircleBorder(),
+        onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              PhotoThumb(c.before?.path, 'قبل', size: 72),
-              const SizedBox(width: 8),
-              PhotoThumb(c.after?.path, 'بعد', size: 72),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      c.title,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      formatDate(c.created),
-                      style: const TextStyle(color: kMuted),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_left, color: kMuted),
-            ],
-          ),
+          padding: const EdgeInsets.all(10),
+          child: Icon(icon, color: b.dark, size: 20),
         ),
       ),
     );
   }
 }
 
-class _CaseTitleDialog extends StatefulWidget {
-  const _CaseTitleDialog();
+class _NotesField extends StatefulWidget {
+  final Patient patient;
+  const _NotesField(this.patient);
   @override
-  State<_CaseTitleDialog> createState() => _CaseTitleDialogState();
+  State<_NotesField> createState() => _NotesFieldState();
 }
 
-class _CaseTitleDialogState extends State<_CaseTitleDialog> {
+class _NotesFieldState extends State<_NotesField> {
+  late final _c = TextEditingController(text: widget.patient.notes);
+
+  @override
+  void dispose() {
+    if (_c.text != widget.patient.notes) {
+      widget.patient.notes = _c.text;
+      Store.instance.save();
+    }
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    controller: _c,
+    minLines: 2,
+    maxLines: 6,
+    decoration: const InputDecoration(
+      hintText: 'حساسية، أدوية، ملاحظات عامة...',
+    ),
+    onChanged: (v) => widget.patient.notes = v,
+    onEditingComplete: Store.instance.save,
+  );
+}
+
+class CaseTile extends StatelessWidget {
+  final Patient patient;
+  final CaseRecord record;
+  final bool showPatient;
+  const CaseTile({
+    super.key,
+    required this.patient,
+    required this.record,
+    this.showPatient = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    final c = record;
+    final doctor = Store.instance.doctor(c.doctorId);
+    return BrandCard(
+      padding: const EdgeInsets.all(12),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CaseScreen(patient: patient, record: c),
+        ),
+      ),
+      child: Row(
+        children: [
+          PhotoThumb(c.before?.path, 'قبل', size: 64),
+          const SizedBox(width: 6),
+          PhotoThumb(c.after?.path, 'بعد', size: 64),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  showPatient ? patient.name : c.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: b.text,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  [
+                    if (showPatient) c.title,
+                    if (doctor != null) doctor.name,
+                    arDate(c.created),
+                  ].join(' · '),
+                  maxLines: 2,
+                  style: TextStyle(color: b.muted, fontSize: 12),
+                ),
+                const SizedBox(height: 6),
+                StatusBadge(c.status),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_left, color: b.muted),
+        ],
+      ),
+    );
+  }
+}
+
+/// (العلاج، id الطبيب) أو null.
+Future<(String, String?)?> showNewCaseSheet(BuildContext context) =>
+    showModalBottomSheet<(String, String?)>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => const _NewCaseSheet(),
+    );
+
+class _NewCaseSheet extends StatefulWidget {
+  const _NewCaseSheet();
+  @override
+  State<_NewCaseSheet> createState() => _NewCaseSheetState();
+}
+
+class _NewCaseSheetState extends State<_NewCaseSheet> {
   final _title = TextEditingController();
+  String? _doctor = Store.instance.activeDoctor?.id;
 
   @override
   void dispose() {
@@ -224,43 +336,68 @@ class _CaseTitleDialogState extends State<_CaseTitleDialog> {
 
   void _submit() {
     final t = _title.text.trim();
-    Navigator.pop(context, t.isEmpty ? 'حالة' : t);
+    Navigator.pop(context, (t.isEmpty ? 'حالة' : t, _doctor));
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('حالة جديدة'),
-      content: Column(
+    final b = context.brand;
+    final doctors = Store.instance.doctors;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        20,
+        20,
+        MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          const Text(
+            'حالة جديدة',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 14),
           TextField(
             controller: _title,
-            autofocus: true,
-            onSubmitted: (_) => _submit(),
-            decoration: const InputDecoration(labelText: 'نوع العلاج'),
+            decoration: InputDecoration(
+              labelText: b.teethChart ? 'نوع العلاج' : 'نوع الجلسة',
+            ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Wrap(
             spacing: 6,
             runSpacing: 6,
             children: [
-              for (final t in treatments)
-                ActionChip(
+              for (final t in b.treatments)
+                ChoiceChip(
                   label: Text(t),
-                  onPressed: () => setState(() => _title.text = t),
+                  selected: _title.text == t,
+                  onSelected: (_) => setState(() => _title.text = t),
                 ),
             ],
           ),
+          const SizedBox(height: 16),
+          Text('الطبيب', style: TextStyle(color: b.muted)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final d in doctors)
+                ChoiceChip(
+                  avatar: DoctorAvatar(d, size: 22),
+                  label: Text(d.name),
+                  selected: _doctor == d.id,
+                  onSelected: (v) => setState(() => _doctor = v ? d.id : null),
+                ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          FilledButton(onPressed: _submit, child: const Text('إنشاء')),
         ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('إلغاء'),
-        ),
-        FilledButton(onPressed: _submit, child: const Text('إنشاء')),
-      ],
     );
   }
 }

@@ -3,9 +3,11 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rival_clinic/brand.dart';
 import 'package:rival_clinic/models.dart';
 import 'package:rival_clinic/render.dart';
 import 'package:rival_clinic/screens/patient_screen.dart';
+import 'package:rival_clinic/stats.dart';
 import 'package:rival_clinic/store.dart';
 
 void main() {
@@ -105,36 +107,139 @@ void main() {
     expect(internationalPhone('00964770'), '964770');
   });
 
-  test('archive survives a restart', () async {
-    final dir = await Directory.systemTemp.createTemp('rival');
-    addTearDown(() => dir.delete(recursive: true));
+  group('store', () {
+    late Directory dir;
     final store = Store.instance;
-    await store.load(dir: dir);
-    final src = File('${dir.path}/src.jpg')..writeAsBytesSync([1, 2, 3]);
-    final p = await store.addPatient('زينب علي', '07701234567');
-    p.cases.add(
-      CaseRecord(
-        id: '1',
-        title: 'فينير',
-        created: 0,
-        before: Photo(
-          await store.importPhoto(src.path),
-          a: const Offset(1, 2),
-          b: const Offset(3, 4),
+
+    setUp(() async {
+      dir = await Directory.systemTemp.createTemp('rival');
+      await store.init(dir: dir);
+    });
+    tearDown(() => dir.delete(recursive: true));
+
+    test('archive survives a restart', () async {
+      await store.open(Section.dental);
+      final src = File('${dir.path}/src.jpg')..writeAsBytesSync([1, 2, 3]);
+      final p = await store.addPatient('زينب علي', '07701234567');
+      p.cases.add(
+        CaseRecord(
+          id: '1',
+          title: 'فينير',
+          created: 0,
+          doctorId: 'd1',
+          teeth: [11, 21],
+          visits: [Visit(id: 'v', date: 5, note: 'تحضير')],
+          before: Photo(
+            await store.importPhoto(src.path),
+            a: const Offset(1, 2),
+            b: const Offset(3, 4),
+          ),
         ),
-      ),
-    );
-    await store.save();
+      );
+      await store.save();
 
-    await store.load(dir: dir);
-    final loaded = store.patients.single;
-    expect(loaded.name, 'زينب علي');
-    expect(loaded.cases.single.before!.b, const Offset(3, 4));
-    expect(File(loaded.cases.single.before!.path).existsSync(), isTrue);
+      await store.open(Section.dental);
+      final c = store.patients.single.cases.single;
+      expect(store.patients.single.name, 'زينب علي');
+      expect(c.before!.b, const Offset(3, 4));
+      expect(c.teeth, [11, 21]);
+      expect(c.visits.single.note, 'تحضير');
+      expect(store.doctor(c.doctorId)!.name, 'د. مصطفى عبد الكريم');
+      expect(File(c.before!.path).existsSync(), isTrue);
 
-    await store.deletePatient(loaded);
-    await store.load(dir: dir);
-    expect(store.patients, isEmpty);
-    expect(store.photosDir.listSync(), isEmpty);
+      await store.deletePatient(store.patients.single);
+      await store.open(Section.dental);
+      expect(store.patients, isEmpty);
+      expect(store.photosDir.listSync(), isEmpty);
+    });
+
+    test('dental and beauty keep separate archives and teams', () async {
+      await store.open(Section.dental);
+      await store.addPatient('أحمد', '');
+      expect(store.doctors, hasLength(5));
+
+      await store.open(Section.beauty);
+      expect(store.patients, isEmpty);
+      expect(store.doctors.single.name, 'د. حنين عبد الكريم');
+      expect(store.doctors.single.services, contains('بوتوكس'));
+      final p = await store.addPatient('سارة', '');
+      expect(p.gender, Gender.female);
+
+      await store.open(Section.dental);
+      expect(store.patients.single.name, 'أحمد');
+      expect(store.clinic.phones, contains('0776 172 0720'));
+    });
+
+    test('data from the first version moves into the dental section', () async {
+      final photos = Directory('${dir.path}/photos')..createSync();
+      final photo = File('${photos.path}/1.jpg')..writeAsBytesSync([9]);
+      File('${dir.path}/patients.json').writeAsStringSync(
+        '[{"id":"1","name":"قديم","phone":"","created":0,"cases":[{"id":"c","title":"تقويم","created":0,"before":{"path":"${photo.path}"}}]}]',
+      );
+      await store.init(dir: dir);
+      await store.open(Section.dental);
+      final c = store.patients.single.cases.single;
+      expect(store.patients.single.name, 'قديم');
+      expect(c.status, CaseStatus.active);
+      expect(File(c.before!.path).readAsBytesSync(), [9]);
+      expect(c.before!.path, contains('/dental/photos/'));
+    });
+
+    test('backup restores both sections with working photo paths', () async {
+      await store.open(Section.beauty);
+      final src = File('${dir.path}/s.jpg')..writeAsBytesSync([7, 7]);
+      final p = await store.addPatient('مريم', '');
+      p.cases.add(
+        CaseRecord(
+          id: 'x',
+          title: 'فلر',
+          created: 0,
+          after: Photo(await store.importPhoto(src.path)),
+        ),
+      );
+      await store.save();
+      final zip = await store.exportBackup();
+      final saved = File(zip).readAsBytesSync();
+
+      // تلفون جديد: مجلد مختلف تماماً.
+      final other = await Directory.systemTemp.createTemp('rival2');
+      addTearDown(() => other.delete(recursive: true));
+      await store.init(dir: other);
+      await store.open(Section.beauty);
+      expect(store.patients, isEmpty);
+      final copy = File('${other.path}/b.zip')..writeAsBytesSync(saved);
+      await store.restoreBackup(copy.path);
+
+      final c = store.patients.single.cases.single;
+      expect(c.after!.path, startsWith(other.path));
+      expect(File(c.after!.path).readAsBytesSync(), [7, 7]);
+    });
+
+    test('statistics by period, treatment and doctor', () async {
+      await store.open(Section.dental);
+      final now = DateTime(2026, 10, 8);
+      final p = await store.addPatient('علي', '');
+      int at(int month) => DateTime(2026, month, 3).millisecondsSinceEpoch;
+      p.cases.addAll([
+        CaseRecord(id: '1', title: 'تقويم', created: at(10), doctorId: 'd1'),
+        CaseRecord(
+          id: '2',
+          title: 'تقويم',
+          created: at(9),
+          doctorId: 'd1',
+          status: CaseStatus.done,
+          completed: at(9) + 10 * 86400000,
+        ),
+        CaseRecord(id: '3', title: 'تبييض', created: at(2), doctorId: 'd3'),
+      ]);
+      final month = Stats.of(store, period: Period.month, now: now);
+      expect(month.total, 1);
+      final all = Stats.of(store, now: now);
+      expect(all.byTreatment, {'تقويم': 2, 'تبييض': 1});
+      expect(all.byDoctor['د. مصطفى عبد الكريم'], 2);
+      expect(all.avgDays, 10);
+      expect(Stats.of(store, doctorId: 'd3').total, 1);
+      expect(all.monthly(3, now: now).map((m) => m.$3), [0, 1, 1]);
+    });
   });
 }

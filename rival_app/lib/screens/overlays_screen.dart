@@ -5,7 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../render.dart';
 import '../store.dart';
-import '../theme.dart';
+import '../brand.dart';
 import 'common.dart';
 
 /// قوالب PNG شفافة يصممها فريق الجرافيك (شعار، إطار، عرض حملة...).
@@ -51,7 +51,7 @@ class OverlaysScreen extends StatelessWidget {
               ? const EmptyState(
                   icon: Icons.filter_frames_outlined,
                   title: 'ماكو قوالب',
-                  body: 'ارفع قوالب PNG شفافة بهوية ريڤال (إطارات، شعار، عروض الأقساط والخصومات). الأفضل بمقاس 1080×1350 للمنشور أو 1080×1920 للستوري والفيديو.',
+                  body: 'ارفع قوالب PNG شفافة بهوية القسم (إطارات، عروض، حملات). الأفضل بمقاس ١٠٨٠×١٣٥٠ للمنشور أو ١٠٨٠×١٩٢٠ للستوري والفيديو. التطبيق فيه إطار الهوية جاهز.',
                 )
               : GridView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
@@ -70,7 +70,12 @@ class OverlaysScreen extends StatelessWidget {
                         fit: StackFit.expand,
                         children: [
                           // خلفية مربعات حتى تبين الشفافية.
-                          const CustomPaint(painter: _Checker()),
+                          CustomPaint(
+                            painter: _Checker(
+                              context.brand.line,
+                              context.brand.card,
+                            ),
+                          ),
                           Image.file(
                             File(path),
                             fit: BoxFit.contain,
@@ -106,13 +111,14 @@ class OverlaysScreen extends StatelessWidget {
 }
 
 class _Checker extends CustomPainter {
-  const _Checker();
+  final Color c1, c2;
+  const _Checker(this.c1, this.c2);
 
   @override
   void paint(Canvas canvas, Size size) {
     const s = 12.0;
-    final a = Paint()..color = kSurfaceHigh;
-    final b = Paint()..color = kSurface;
+    final a = Paint()..color = c1;
+    final b = Paint()..color = c2;
     for (var y = 0.0; y < size.height; y += s) {
       for (var x = 0.0; x < size.width; x += s) {
         final odd = ((x / s).floor() + (y / s).floor()).isOdd;

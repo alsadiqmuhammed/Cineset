@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../render.dart';
-import '../theme.dart';
+import '../brand.dart';
 
 /// تحديد نقطتي المحاذاة يدوياً: اسحب النقطتين لزاويتي الفم (أو طرفي الأنياب)،
 /// ونفس النقطتين بصورة "بعد" حتى تتطابق الصورتان.
@@ -53,12 +53,14 @@ class _PointsEditorState extends State<PointsEditor> {
       ),
       body: Column(
         children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Text(
-              'اسحب النقطتين لزاويتي الفم (أو طرفي الأنياب). استخدم نفس المكان بصورتي قبل وبعد.',
+              context.brand.alignTarget == AlignTarget.mouth
+                  ? 'اسحب النقطتين لزاويتي الفم (أو طرفي الأنياب). استخدم نفس المكان بصورتي قبل وبعد.'
+                  : 'اسحبي النقطتين لمنتصف العينين (أو زاويتي الشفايف لجلسات الشفايف). نفس المكان بصورتي قبل وبعد.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: kMuted),
+              style: TextStyle(color: context.brand.muted),
             ),
           ),
           Expanded(
@@ -125,7 +127,11 @@ class _PointsEditorState extends State<PointsEditor> {
           ),
           CustomPaint(
             size: box.biggest,
-            painter: _PointsPainter(toScreen(_a), toScreen(_b)),
+            painter: _PointsPainter(
+              toScreen(_a),
+              toScreen(_b),
+              context.brand.accent,
+            ),
           ),
           if (_finger != null)
             Positioned(
@@ -135,8 +141,10 @@ class _PointsEditorState extends State<PointsEditor> {
                 size: const Size(120, 120),
                 magnificationScale: 2.5,
                 focalPointOffset: const Offset(0, 110),
-                decoration: const MagnifierDecoration(
-                  shape: CircleBorder(side: BorderSide(color: kGold, width: 2)),
+                decoration: MagnifierDecoration(
+                  shape: CircleBorder(
+                    side: BorderSide(color: context.brand.primary, width: 2),
+                  ),
                 ),
               ),
             ),
@@ -148,21 +156,22 @@ class _PointsEditorState extends State<PointsEditor> {
 
 class _PointsPainter extends CustomPainter {
   final Offset a, b;
-  _PointsPainter(this.a, this.b);
+  final Color color;
+  _PointsPainter(this.a, this.b, this.color);
 
   @override
   void paint(Canvas canvas, Size size) {
     final line = Paint()
-      ..color = kGold.withValues(alpha: 0.8)
+      ..color = color.withValues(alpha: 0.8)
       ..strokeWidth = 1.5;
     canvas.drawLine(a, b, line);
     for (final p in [a, b]) {
-      canvas.drawCircle(p, 14, Paint()..color = kGold.withValues(alpha: 0.25));
+      canvas.drawCircle(p, 14, Paint()..color = color.withValues(alpha: 0.25));
       canvas.drawCircle(
         p,
         14,
         Paint()
-          ..color = kGold
+          ..color = color
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2,
       );

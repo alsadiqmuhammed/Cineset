@@ -1,0 +1,183 @@
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../brand.dart';
+import '../models.dart';
+import '../render.dart';
+import '../store.dart';
+import 'common.dart';
+
+class DoctorEditScreen extends StatefulWidget {
+  final Doctor? doctor;
+  const DoctorEditScreen({super.key, this.doctor});
+
+  @override
+  State<DoctorEditScreen> createState() => _DoctorEditScreenState();
+}
+
+class _DoctorEditScreenState extends State<DoctorEditScreen> {
+  late final Doctor _d =
+      widget.doctor ?? Doctor(id: Store.newId(), name: 'د. ');
+  late final _name = TextEditingController(text: _d.name);
+  late final _specialty = TextEditingController(text: _d.specialty);
+  late final _phone = TextEditingController(text: _d.phone);
+  late final _bio = TextEditingController(text: _d.bio);
+  late final _services = TextEditingController(text: _d.services.join('، '));
+  String? _photo;
+
+  @override
+  void initState() {
+    super.initState();
+    _photo = _d.photo;
+  }
+
+  @override
+  void dispose() {
+    for (final c in [_name, _specialty, _phone, _bio, _services]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _pickPhoto() async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 800,
+      maxHeight: 800,
+      imageQuality: 90,
+    );
+    if (picked == null) return;
+    final path = await Store.instance.importPhoto(picked.path);
+    setState(() => _photo = path);
+  }
+
+  Future<void> _save() async {
+    final name = _name.text.trim();
+    if (name.isEmpty || name == 'د.') {
+      toast(context, 'اكتب الاسم');
+      return;
+    }
+    if (_d.photo != null && _d.photo != _photo) {
+      evictImage(_d.photo!);
+    }
+    _d
+      ..name = name
+      ..specialty = _specialty.text.trim()
+      ..phone = _phone.text.trim()
+      ..bio = _bio.text.trim()
+      ..photo = _photo;
+    _d.services
+      ..clear()
+      ..addAll(
+        _services.text
+            .split(RegExp('[،,\n]'))
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty),
+      );
+    final store = Store.instance;
+    if (!store.doctors.contains(_d)) {
+      await store.addDoctor(_d);
+    } else {
+      await store.saveAll();
+    }
+    if (mounted) Navigator.pop(context);
+  }
+
+  Future<void> _delete() async {
+    final ok = await confirm(
+      context,
+      'حذف ${_d.name}؟',
+      'الحالات تبقى، بس تنشال منها نسبة الطبيب.',
+    );
+    if (!ok) return;
+    await Store.instance.deleteDoctor(_d);
+    if (!mounted) return;
+    Navigator.of(context)
+      ..pop()
+      ..pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    final preview = Doctor(id: _d.id, name: _name.text, photo: _photo);
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.doctor == null ? 'طبيب جديد' : 'تعديل الملف'),
+        actions: [
+          if (widget.doctor != null)
+            IconButton(
+              onPressed: _delete,
+              icon: const Icon(Icons.delete_outline),
+            ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+        children: [
+          Center(
+            child: Stack(
+              children: [
+                DoctorAvatar(preview, size: 110),
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  child: IconButton.filled(
+                    style: IconButton.styleFrom(backgroundColor: b.accent),
+                    onPressed: _pickPhoto,
+                    icon: Icon(Icons.photo_camera, color: b.dark),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_photo != null)
+            Center(
+              child: TextButton(
+                onPressed: () => setState(() => _photo = null),
+                child: const Text('شيل الصورة'),
+              ),
+            ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _name,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(labelText: 'الاسم'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _specialty,
+            decoration: const InputDecoration(labelText: 'الاختصاص'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _phone,
+            keyboardType: TextInputType.phone,
+            textDirection: TextDirection.ltr,
+            decoration: const InputDecoration(labelText: 'رقم الهاتف / واتساب'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _services,
+            decoration: const InputDecoration(
+              labelText: 'الخدمات',
+              hintText: 'مثلاً: فلر، بوتوكس، نضارة البشرة',
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _bio,
+            minLines: 3,
+            maxLines: 8,
+            decoration: const InputDecoration(
+              labelText: 'نبذة',
+              hintText: 'الشهادة، سنين الخبرة، الاهتمامات...',
+            ),
+          ),
+          const SizedBox(height: 22),
+          FilledButton(onPressed: _save, child: const Text('حفظ')),
+        ],
+      ),
+    );
+  }
+}

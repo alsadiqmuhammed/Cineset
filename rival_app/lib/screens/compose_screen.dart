@@ -3,30 +3,37 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../brand.dart';
 import '../models.dart';
 import '../render.dart';
 import '../store.dart';
-import '../theme.dart';
 import 'design_controls.dart';
 
 class ComposeScreen extends StatefulWidget {
+  final Patient? patient;
   final CaseRecord record;
-  const ComposeScreen({super.key, required this.record});
+  const ComposeScreen({super.key, this.patient, required this.record});
 
   @override
   State<ComposeScreen> createState() => _ComposeScreenState();
 }
 
 class _ComposeScreenState extends State<ComposeScreen> {
-  ui.Image? _before, _after, _overlay, _preview;
+  ui.Image? _before, _after, _overlay, _logo, _preview;
   PostFormat _format = PostFormat.portrait;
   Layout _layout = Layout.sideBySide;
-  Framing _framing = const Framing();
+  late Framing _framing = Framing(
+    offsetY: Store.instance.brand.alignTarget == AlignTarget.eyes ? 0.08 : 0,
+  );
   String? _overlayPath;
   bool _labels = true;
+  bool _brandFrame = true;
+  bool _doctorCaption = true;
   bool _exporting = false;
   int _generation = 0;
   String? _exported;
+
+  Brand get _brand => Store.instance.brand;
 
   @override
   void initState() {
@@ -34,6 +41,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
     () async {
       _before = await loadImage(widget.record.before!.path);
       _after = await loadImage(widget.record.after!.path);
+      _logo = await loadAssetImage(_brand.logoReversed);
       _fitZoom();
       _refresh();
     }();
@@ -41,9 +49,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
 
   /// يختار تقريب يملأ الخليتين (ويبدأ من 1 على الأقل).
   void _fitZoom() {
-    final cell = _layout == Layout.sideBySide
-        ? Rect.fromLTWH(0, 0, _format.width / 2, _format.height.toDouble())
-        : Rect.fromLTWH(0, 0, _format.width.toDouble(), _format.height / 2);
+    final (cell, _) = cellsFor(_format.size, _layout);
     var z = 1.0;
     for (final (img, photo) in [
       (_before!, widget.record.before!),
@@ -55,15 +61,25 @@ class _ComposeScreenState extends State<ComposeScreen> {
     _framing = Framing(zoom: z.clamp(0.4, 2.5), offsetY: _framing.offsetY);
   }
 
+  String get _caption {
+    final d = Store.instance.doctor(widget.record.doctorId);
+    if (!_doctorCaption || d == null) return _brand.name;
+    return '${d.name} · ${_brand.name}';
+  }
+
   CompositeSpec _spec() => CompositeSpec(
     before: _before!,
     after: _after!,
     beforePhoto: widget.record.before!,
     afterPhoto: widget.record.after!,
+    brand: _brand,
     format: _format,
     layout: _layout,
     framing: _framing,
     overlay: _overlay,
+    frame: _brandFrame && _logo != null
+        ? BrandFrame(_brand, _logo!, _caption)
+        : null,
     labels: _labels,
   );
 
@@ -109,21 +125,28 @@ class _ComposeScreenState extends State<ComposeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final b = context.brand;
     return Scaffold(
       appBar: AppBar(title: const Text('تصميم قبل وبعد')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
         children: [
-          AspectRatio(
-            aspectRatio: _format.width / _format.height,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: _preview == null
-                  ? Container(
-                      color: kSurface,
-                      child: const Center(child: CircularProgressIndicator()),
-                    )
-                  : RawImage(image: _preview, fit: BoxFit.contain),
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: b.shadow,
+            ),
+            child: AspectRatio(
+              aspectRatio: _format.width / _format.height,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: _preview == null
+                    ? Container(
+                        color: b.card,
+                        child: const Center(child: CircularProgressIndicator()),
+                      )
+                    : RawImage(image: _preview, fit: BoxFit.contain),
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -156,6 +179,25 @@ class _ComposeScreenState extends State<ComposeScreen> {
                     _fitZoom();
                   }),
                 ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilterChip(
+                label: Text('إطار ${b.name}'),
+                selected: _brandFrame,
+                onSelected: (v) => _update(() => _brandFrame = v),
+              ),
+              FilterChip(
+                label: const Text('اسم الطبيب'),
+                selected: _doctorCaption,
+                onSelected: _brandFrame
+                    ? (v) => _update(() => _doctorCaption = v)
+                    : null,
+              ),
               FilterChip(
                 label: const Text('كلمة قبل / بعد'),
                 selected: _labels,
@@ -174,9 +216,6 @@ class _ComposeScreenState extends State<ComposeScreen> {
             children: [
               Expanded(
                 child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(50),
-                  ),
                   onPressed: _preview == null || _exporting
                       ? null
                       : () async {
@@ -190,9 +229,6 @@ class _ComposeScreenState extends State<ComposeScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: FilledButton.tonalIcon(
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(50),
-                  ),
                   onPressed: _preview == null || _exporting
                       ? null
                       : () async => shareFile(await _export()),
@@ -207,6 +243,12 @@ class _ComposeScreenState extends State<ComposeScreen> {
               padding: EdgeInsets.only(top: 12),
               child: LinearProgressIndicator(),
             ),
+          const SizedBox(height: 12),
+          Text(
+            'النتائج تنشر بموافقة ${b.f('المراجع', 'المراجعة')}.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: b.muted, fontSize: 12),
+          ),
         ],
       ),
     );

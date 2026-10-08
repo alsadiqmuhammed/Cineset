@@ -4,13 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../align.dart';
+import '../brand.dart';
 import '../models.dart';
 import '../render.dart';
+import '../report_pdf.dart';
 import '../store.dart';
-import '../theme.dart';
 import 'common.dart';
 import 'compose_screen.dart';
 import 'points_editor.dart';
+import 'teeth_chart.dart';
 import 'video_screen.dart';
 
 enum Slot { before, after }
@@ -25,7 +27,7 @@ class CaseScreen extends StatefulWidget {
 }
 
 class _CaseScreenState extends State<CaseScreen> {
-  final _aligner = AutoAligner();
+  late final _aligner = AutoAligner(Store.instance.brand.alignTarget);
   late final _note = TextEditingController(text: widget.record.note);
   bool _busy = false;
 
@@ -34,14 +36,24 @@ class _CaseScreenState extends State<CaseScreen> {
   @override
   void dispose() {
     _aligner.close();
+    if (_note.text != c.note) {
+      c.note = _note.text;
+      Store.instance.save();
+    }
     _note.dispose();
     super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() {});
+    await Store.instance.save();
   }
 
   Photo? _get(Slot s) => s == Slot.before ? c.before : c.after;
   void _set(Slot s, Photo? p) => s == Slot.before ? c.before = p : c.after = p;
 
   Future<void> _pick(Slot slot, ImageSource source) async {
+    final b = context.brand;
     final picked = await ImagePicker().pickImage(
       source: source,
       maxWidth: 2400,
@@ -57,12 +69,18 @@ class _CaseScreenState extends State<CaseScreen> {
         evictImage(old.path);
         await Store.instance.deletePhoto(old);
       }
-      var photo = Photo(path);
+      var photo = Photo(path, taken: DateTime.now().millisecondsSinceEpoch);
       photo = await _tryAlign(photo) ?? photo;
       _set(slot, photo);
       await Store.instance.save();
       if (mounted && !photo.aligned) {
-        toast(context, 'ما لگيت وجه بالصورة. حدد نقطتي المحاذاة بإيدك.');
+        toast(
+          context,
+          b.f(
+            'ما لگيت وجه بالصورة. حدد نقطتي المحاذاة بإيدك.',
+            'ما لگيت وجه بالصورة. حددي نقطتي المحاذاة بإيدچ.',
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -97,7 +115,7 @@ class _CaseScreenState extends State<CaseScreen> {
       context,
       missed == 0
           ? 'تمت المحاذاة. راجع المعاينة.'
-          : 'ما لگيت وجه بـ $missed صورة. حدد النقاط بإيدك.',
+          : 'ما لگيت وجه بـ ${ar(missed)} صورة. حدد النقاط يدوياً.',
     );
   }
 
@@ -109,144 +127,333 @@ class _CaseScreenState extends State<CaseScreen> {
       MaterialPageRoute(builder: (_) => PointsEditor(photo: p)),
     );
     if (edited == null) return;
-    setState(() => _set(slot, edited));
-    await Store.instance.save();
+    _set(slot, edited);
+    await _save();
   }
 
   Future<void> _delete() async {
     final ok = await confirm(
       context,
       'حذف الحالة؟',
-      'راح تنحذف صور قبل وبعد لهذه الحالة.',
+      'راح تنحذف صور قبل وبعد والزيارات لهذه الحالة.',
     );
     if (!ok) return;
     await Store.instance.deleteCase(widget.patient, c);
     if (mounted) Navigator.pop(context);
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final ready = c.before != null && c.after != null;
-    return PopScope(
-      onPopInvokedWithResult: (_, _) {
-        if (_note.text != c.note) {
-          c.note = _note.text;
-          Store.instance.save();
-        }
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(c.title),
-          actions: [
-            IconButton(
-              tooltip: 'حذف الحالة',
-              onPressed: _delete,
-              icon: const Icon(Icons.delete_outline),
-            ),
-          ],
-        ),
-        body: Stack(
+  Future<void> _rename() async {
+    final ctl = TextEditingController(text: c.title);
+    final b = context.brand;
+    final t = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('نوع العلاج'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+            TextField(controller: ctl, autofocus: true),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
               children: [
-                Text(
-                  widget.patient.name,
-                  style: const TextStyle(color: kGold, fontSize: 15),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(child: _slotCard(Slot.before, 'قبل')),
-                    const SizedBox(width: 12),
-                    Expanded(child: _slotCard(Slot.after, 'بعد')),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: ready && !_busy ? _alignBoth : null,
-                  icon: const Icon(Icons.auto_fix_high),
-                  label: const Text('محاذاة تلقائية بالذكاء الاصطناعي'),
-                ),
-                const SizedBox(height: 20),
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                  ),
-                  onPressed: ready
-                      ? () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ComposeScreen(record: c),
-                          ),
-                        )
-                      : null,
-                  icon: const Icon(Icons.compare),
-                  label: const Text('تصميم صورة قبل وبعد'),
-                ),
-                const SizedBox(height: 10),
-                FilledButton.tonalIcon(
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                  ),
-                  onPressed: ready
-                      ? () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => VideoScreen(record: c),
-                          ),
-                        )
-                      : null,
-                  icon: const Icon(Icons.movie_creation_outlined),
-                  label: const Text('فيديو التحوّل (Reel / TikTok)'),
-                ),
-                if (!ready)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 10),
-                    child: Text(
-                      'أضف صورة قبل وصورة بعد حتى تفتح التصاميم.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: kMuted),
-                    ),
-                  ),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: _note,
-                  minLines: 2,
-                  maxLines: 6,
-                  decoration: const InputDecoration(
-                    labelText: 'ملاحظات الحالة',
-                  ),
-                ),
+                for (final t in b.treatments)
+                  ActionChip(label: Text(t), onPressed: () => ctl.text = t),
               ],
             ),
-            if (_busy)
-              const ColoredBox(
-                color: Color(0x88000000),
-                child: Center(child: CircularProgressIndicator()),
-              ),
           ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctl.text.trim()),
+            child: const Text('حفظ'),
+          ),
+        ],
+      ),
+    );
+    ctl.dispose();
+    if (t == null || t.isEmpty) return;
+    c.title = t;
+    await _save();
+  }
+
+  Future<void> _addVisit([Visit? existing]) async {
+    final r = await showModalBottomSheet<Visit>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _VisitSheet(existing: existing),
+    );
+    if (r == null) return;
+    if (existing == null) {
+      c.visits.add(r);
+    }
+    c.visits.sort((a, b) => a.date.compareTo(b.date));
+    await _save();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    final ready = c.before != null && c.after != null;
+    final store = Store.instance;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(c.title),
+        actions: [
+          IconButton(
+            tooltip: 'تعديل نوع العلاج',
+            onPressed: _rename,
+            icon: const Icon(Icons.edit_outlined),
+          ),
+          IconButton(
+            tooltip: 'حذف الحالة',
+            onPressed: _delete,
+            icon: const Icon(Icons.delete_outline),
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          ListView(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 40),
+            children: [
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  Pill(widget.patient.name, icon: Icons.person),
+                  Pill(
+                    arDate(c.created),
+                    bg: b.accent.withValues(alpha: 0.35),
+                    fg: b.dark,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(child: _slotCard(Slot.before, 'قبل')),
+                  const SizedBox(width: 12),
+                  Expanded(child: _slotCard(Slot.after, 'بعد')),
+                ],
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: ready && !_busy ? _alignBoth : null,
+                icon: const Icon(Icons.auto_fix_high),
+                label: const Text('محاذاة تلقائية بالذكاء الاصطناعي'),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: ready
+                          ? () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ComposeScreen(
+                                  patient: widget.patient,
+                                  record: c,
+                                ),
+                              ),
+                            )
+                          : null,
+                      icon: const Icon(Icons.compare),
+                      label: const Text('تصميم قبل وبعد'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: ready
+                          ? () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => VideoScreen(record: c),
+                              ),
+                            )
+                          : null,
+                      icon: const Icon(Icons.movie_creation_outlined),
+                      label: const Text('فيديو التحوّل'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: () => shareReport(
+                  context,
+                  () => caseReport(b, widget.patient, c),
+                ),
+                icon: const Icon(Icons.picture_as_pdf_outlined),
+                label: const Text('تقرير الحالة PDF'),
+              ),
+              SectionHeader('الحالة والطبيب'),
+              BrandCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SegmentedButton<CaseStatus>(
+                      segments: [
+                        for (final s in CaseStatus.values)
+                          ButtonSegment(value: s, label: Text(s.label)),
+                      ],
+                      selected: {c.status},
+                      onSelectionChanged: (s) {
+                        c.status = s.first;
+                        c.completed = c.status == CaseStatus.done
+                            ? DateTime.now().millisecondsSinceEpoch
+                            : null;
+                        _save();
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final d in store.doctors)
+                          ChoiceChip(
+                            avatar: DoctorAvatar(d, size: 22),
+                            label: Text(d.name),
+                            selected: c.doctorId == d.id,
+                            onSelected: (v) {
+                              c.doctorId = v ? d.id : null;
+                              _save();
+                            },
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (b.teethChart) ...[
+                SectionHeader(
+                  'الأسنان المعالجة',
+                  trailing: c.teeth.isEmpty
+                      ? null
+                      : Text(
+                          ar(c.teeth.length),
+                          style: TextStyle(
+                            color: b.primary,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                ),
+                BrandCard(
+                  child: TeethChart(
+                    selected: c.teeth.toSet(),
+                    onToggle: (t) {
+                      c.teeth.contains(t) ? c.teeth.remove(t) : c.teeth.add(t);
+                      c.teeth.sort();
+                      _save();
+                    },
+                  ),
+                ),
+              ] else ...[
+                SectionHeader('المناطق المعالجة'),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final a in b.areas)
+                      FilterChip(
+                        label: Text(a),
+                        selected: c.areas.contains(a),
+                        onSelected: (v) {
+                          v ? c.areas.add(a) : c.areas.remove(a);
+                          _save();
+                        },
+                      ),
+                  ],
+                ),
+              ],
+              SectionHeader(
+                b.teethChart ? 'الزيارات' : 'الجلسات',
+                trailing: TextButton.icon(
+                  onPressed: _addVisit,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('إضافة'),
+                ),
+              ),
+              if (c.visits.isEmpty)
+                Text(
+                  b.f(
+                    'سجّل كل زيارة بتاريخها وشنو انسوّى بيها.',
+                    'سجّلي كل جلسة بتاريخها وشنو انسوّى بيها.',
+                  ),
+                  style: TextStyle(color: b.muted),
+                ),
+              for (var i = 0; i < c.visits.length; i++)
+                _VisitTile(
+                  index: i,
+                  visit: c.visits[i],
+                  last: i == c.visits.length - 1,
+                  onTap: () => _addVisit(c.visits[i]),
+                  onDelete: () {
+                    c.visits.removeAt(i);
+                    _save();
+                  },
+                ),
+              SectionHeader('ملاحظات الحالة'),
+              TextField(
+                controller: _note,
+                minLines: 3,
+                maxLines: 8,
+                onChanged: (v) => c.note = v,
+                decoration: const InputDecoration(
+                  hintText: 'التشخيص، المواد المستخدمة، التوصيات...',
+                ),
+              ),
+            ],
+          ),
+          if (_busy)
+            const ColoredBox(
+              color: Color(0x66000000),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+        ],
       ),
     );
   }
 
   Widget _slotCard(Slot slot, String label) {
+    final b = context.brand;
     final p = _get(slot);
-    return Card(
-      clipBehavior: Clip.antiAlias,
+    final after = slot == Slot.after;
+    return BrandCard(
+      padding: EdgeInsets.zero,
       child: Column(
         children: [
           AspectRatio(
             aspectRatio: 3 / 4,
             child: p == null
                 ? Container(
-                    color: kSurfaceHigh,
-                    child: Center(
-                      child: Text(
-                        label,
-                        style: const TextStyle(fontSize: 22, color: kMuted),
-                      ),
+                    color: b.line.withValues(alpha: 0.5),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.add_a_photo_outlined,
+                          color: b.muted,
+                          size: 30,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 20,
+                            color: b.muted,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
                     ),
                   )
                 : Stack(
@@ -260,22 +467,18 @@ class _CaseScreenState extends State<CaseScreen> {
                       Positioned(
                         top: 8,
                         right: 8,
-                        child: _chip(label, kGold, const Color(0xFF1A1408)),
+                        child: Pill(label, bg: after ? b.primary : b.dark),
                       ),
                       Positioned(
                         bottom: 8,
                         left: 8,
-                        child: p.aligned
-                            ? _chip(
-                                'محاذاة جاهزة',
-                                Colors.black54,
-                                Colors.greenAccent,
-                              )
-                            : _chip(
-                                'بدون محاذاة',
-                                Colors.black54,
-                                Colors.orangeAccent,
-                              ),
+                        child: Pill(
+                          p.aligned ? 'محاذاة جاهزة' : 'بدون محاذاة',
+                          bg: Colors.black54,
+                          fg: p.aligned
+                              ? Colors.greenAccent
+                              : Colors.orangeAccent,
+                        ),
                       ),
                     ],
                   ),
@@ -296,7 +499,7 @@ class _CaseScreenState extends State<CaseScreen> {
                 icon: const Icon(Icons.photo_library_outlined),
               ),
               IconButton(
-                tooltip: 'تحديد نقاط المحاذاة',
+                tooltip: 'نقاط المحاذاة',
                 onPressed: p == null || _busy ? null : () => _editPoints(slot),
                 icon: const Icon(Icons.control_point),
               ),
@@ -306,16 +509,160 @@ class _CaseScreenState extends State<CaseScreen> {
       ),
     );
   }
+}
 
-  Widget _chip(String text, Color bg, Color fg) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-    decoration: BoxDecoration(
-      color: bg,
-      borderRadius: BorderRadius.circular(20),
-    ),
-    child: Text(
-      text,
-      style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w600),
-    ),
-  );
+class _VisitTile extends StatelessWidget {
+  final int index;
+  final Visit visit;
+  final bool last;
+  final VoidCallback onTap, onDelete;
+  const _VisitTile({
+    required this.index,
+    required this.visit,
+    required this.last,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Column(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: b.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  ar(index + 1),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              if (!last) Expanded(child: Container(width: 2, color: b.line)),
+            ],
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: BrandCard(
+                padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
+                onTap: onTap,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            arDate(visit.date),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              color: b.text,
+                            ),
+                          ),
+                          if (visit.note.isNotEmpty)
+                            Text(visit.note, style: TextStyle(color: b.muted)),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: onDelete,
+                      icon: Icon(Icons.close, size: 18, color: b.muted),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VisitSheet extends StatefulWidget {
+  final Visit? existing;
+  const _VisitSheet({this.existing});
+  @override
+  State<_VisitSheet> createState() => _VisitSheetState();
+}
+
+class _VisitSheetState extends State<_VisitSheet> {
+  late DateTime _date = widget.existing == null
+      ? DateTime.now()
+      : DateTime.fromMillisecondsSinceEpoch(widget.existing!.date);
+  late final _note = TextEditingController(text: widget.existing?.note);
+
+  @override
+  void dispose() {
+    _note.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        20,
+        20,
+        MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            b.teethChart ? 'زيارة' : 'جلسة',
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () async {
+              final d = await showDatePicker(
+                context: context,
+                initialDate: _date,
+                firstDate: DateTime(2015),
+                lastDate: DateTime(2100),
+              );
+              if (d != null) setState(() => _date = d);
+            },
+            icon: const Icon(Icons.event),
+            label: Text(arDate(_date.millisecondsSinceEpoch)),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _note,
+            minLines: 2,
+            maxLines: 5,
+            decoration: const InputDecoration(labelText: 'شنو انسوّى'),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: () {
+              final v = widget.existing ?? Visit(id: Store.newId(), date: 0);
+              v
+                ..date = _date.millisecondsSinceEpoch
+                ..note = _note.text.trim();
+              Navigator.pop(context, v);
+            },
+            child: const Text('حفظ'),
+          ),
+        ],
+      ),
+    );
+  }
 }

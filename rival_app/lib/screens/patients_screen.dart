@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../brand.dart';
 import '../models.dart';
 import '../store.dart';
-import '../theme.dart';
 import 'common.dart';
 import 'patient_screen.dart';
 
@@ -12,8 +12,11 @@ class PatientsScreen extends StatefulWidget {
   State<PatientsScreen> createState() => _PatientsScreenState();
 }
 
+enum _Filter { all, active, done }
+
 class _PatientsScreenState extends State<PatientsScreen> {
   final _search = TextEditingController();
+  _Filter _filter = _Filter.all;
 
   @override
   void dispose() {
@@ -22,9 +25,14 @@ class _PatientsScreenState extends State<PatientsScreen> {
   }
 
   Future<void> _add() async {
-    final result = await showPatientDialog(context);
-    if (result == null || !mounted) return;
-    final p = await Store.instance.addPatient(result.$1, result.$2);
+    final r = await showPatientDialog(context);
+    if (r == null || !mounted) return;
+    final p = await Store.instance.addPatient(
+      r.name,
+      r.phone,
+      gender: r.gender,
+      birthYear: r.birthYear,
+    );
     if (!mounted) return;
     Navigator.push(
       context,
@@ -32,34 +40,35 @@ class _PatientsScreenState extends State<PatientsScreen> {
     );
   }
 
+  bool _matches(Patient p) {
+    final q = _search.text.trim();
+    if (q.isNotEmpty &&
+        !p.name.contains(q) &&
+        !p.phone.replaceAll(' ', '').contains(q.replaceAll(' ', ''))) {
+      return false;
+    }
+    return switch (_filter) {
+      _Filter.all => true,
+      _Filter.active => p.cases.any((c) => c.status == CaseStatus.active),
+      _Filter.done =>
+        p.cases.isNotEmpty && p.cases.every((c) => c.status == CaseStatus.done),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
+    final b = context.brand;
     return ListenableBuilder(
       listenable: Store.instance,
       builder: (context, _) {
-        final q = _search.text.trim();
-        final list = Store.instance.patients
-            .where(
-              (p) => q.isEmpty || p.name.contains(q) || p.phone.contains(q),
-            )
-            .toList();
+        final list = Store.instance.patients.where(_matches).toList();
         return Scaffold(
-          appBar: AppBar(
-            title: const Column(
-              children: [
-                Text(clinicName),
-                Text(
-                  'أرشيف المراجعين',
-                  style: TextStyle(fontSize: 12, color: kGold),
-                ),
-              ],
-            ),
-          ),
+          appBar: AppBar(title: Text(b.patients)),
           floatingActionButton: FloatingActionButton.extended(
             heroTag: null,
             onPressed: _add,
             icon: const Icon(Icons.person_add_alt_1),
-            label: const Text('مراجع جديد'),
+            label: Text(b.newPatient),
           ),
           body: Column(
             children: [
@@ -68,23 +77,50 @@ class _PatientsScreenState extends State<PatientsScreen> {
                 child: TextField(
                   controller: _search,
                   onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     hintText: 'ابحث بالاسم أو رقم الهاتف',
-                    prefixIcon: Icon(Icons.search),
+                    prefixIcon: Icon(Icons.search, color: b.muted),
                   ),
+                ),
+              ),
+              SizedBox(
+                height: 44,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: [
+                    for (final (f, label) in [
+                      (_Filter.all, 'الكل'),
+                      (_Filter.active, 'قيد العلاج'),
+                      (_Filter.done, 'مكتملة'),
+                    ])
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(end: 8),
+                        child: ChoiceChip(
+                          label: Text(label),
+                          selected: _filter == f,
+                          onSelected: (_) => setState(() => _filter = f),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               Expanded(
                 child: list.isEmpty
                     ? EmptyState(
                         icon: Icons.people_outline,
-                        title: q.isEmpty ? 'ماكو مراجعين بعد' : 'ماكو نتائج',
-                        body: q.isEmpty
-                            ? 'أضف أول مراجع واحفظ صور قبل وبعد تحت اسمه.'
-                            : 'جرّب اسم أو رقم ثاني.',
+                        title: Store.instance.patients.isEmpty
+                            ? 'ماكو ${b.patients} بعد'
+                            : 'ماكو نتائج',
+                        body: Store.instance.patients.isEmpty
+                            ? b.f(
+                                'أضف أول مراجع واحفظ صور قبل وبعد تحت اسمه.',
+                                'أضيفي أول مراجعة واحفظي صور قبل وبعد تحت اسمها.',
+                              )
+                            : 'جرّب اسم أو رقم ثاني، أو غيّر الفلتر.',
                       )
                     : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
                         itemCount: list.length,
                         separatorBuilder: (_, _) => const SizedBox(height: 10),
                         itemBuilder: (_, i) => _PatientTile(list[i]),
@@ -104,120 +140,190 @@ class _PatientTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final b = context.brand;
     final latest = p.cases.isEmpty ? null : p.cases.first;
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => PatientScreen(patient: p)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              PhotoThumb(
-                latest?.after?.path ?? latest?.before?.path,
-                p.name.characters.first,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      p.name,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      p.phone.isEmpty ? '—' : p.phone,
-                      textDirection: TextDirection.ltr,
-                      style: const TextStyle(color: kMuted),
-                    ),
-                  ],
+    final active = p.cases.where((c) => c.status == CaseStatus.active).length;
+    return BrandCard(
+      padding: const EdgeInsets.all(12),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => PatientScreen(patient: p)),
+      ),
+      child: Row(
+        children: [
+          PhotoThumb(
+            latest?.after?.path ?? latest?.before?.path,
+            p.name.isEmpty ? '؟' : p.name.substring(0, 1),
+            size: 58,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  p.name,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: b.text,
+                  ),
                 ),
-              ),
+                const SizedBox(height: 4),
+                Text(
+                  [
+                    if (p.phone.isNotEmpty) p.phone,
+                    if (p.age != null) '${ar(p.age!)} سنة',
+                  ].join('  ·  '),
+                  style: TextStyle(color: b.muted, fontSize: 12.5),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
               Text(
-                '${p.cases.length} حالة',
-                style: const TextStyle(color: kGold),
+                '${ar(p.cases.length)} حالة',
+                style: TextStyle(color: b.primary, fontWeight: FontWeight.w800),
               ),
+              if (active > 0) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '${ar(active)} قيد العلاج',
+                  style: TextStyle(color: b.muted, fontSize: 11),
+                ),
+              ],
             ],
           ),
-        ),
+        ],
       ),
     );
   }
 }
 
-/// يرجع (الاسم، الهاتف) أو null إذا انلغى.
-Future<(String, String)?> showPatientDialog(
+class PatientInput {
+  final String name, phone;
+  final Gender? gender;
+  final int? birthYear;
+  const PatientInput(this.name, this.phone, this.gender, this.birthYear);
+}
+
+Future<PatientInput?> showPatientDialog(
   BuildContext context, {
   Patient? existing,
 }) {
-  return showDialog<(String, String)>(
+  return showModalBottomSheet<PatientInput>(
     context: context,
-    builder: (_) => _PatientDialog(existing: existing),
+    isScrollControlled: true,
+    builder: (_) => _PatientSheet(existing: existing),
   );
 }
 
-class _PatientDialog extends StatefulWidget {
+class _PatientSheet extends StatefulWidget {
   final Patient? existing;
-  const _PatientDialog({this.existing});
+  const _PatientSheet({this.existing});
   @override
-  State<_PatientDialog> createState() => _PatientDialogState();
+  State<_PatientSheet> createState() => _PatientSheetState();
 }
 
-class _PatientDialogState extends State<_PatientDialog> {
+class _PatientSheetState extends State<_PatientSheet> {
   late final _name = TextEditingController(text: widget.existing?.name);
   late final _phone = TextEditingController(text: widget.existing?.phone);
+  late final _age = TextEditingController(
+    text: widget.existing?.age?.toString() ?? '',
+  );
+  late Gender? _gender = widget.existing?.gender;
 
   @override
   void dispose() {
     _name.dispose();
     _phone.dispose();
+    _age.dispose();
     super.dispose();
   }
 
   void _submit() {
     final name = _name.text.trim();
     if (name.isEmpty) return;
-    Navigator.pop(context, (name, _phone.text.trim()));
+    final age = int.tryParse(_age.text.trim());
+    Navigator.pop(
+      context,
+      PatientInput(
+        name,
+        _phone.text.trim(),
+        _gender,
+        age == null ? null : DateTime.now().year - age,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.existing == null ? 'مراجع جديد' : 'تعديل المراجع'),
-      content: Column(
+    final b = context.brand;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        20,
+        20,
+        MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Text(
+            widget.existing == null ? b.newPatient : 'تعديل البيانات',
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 16),
           TextField(
             controller: _name,
-            autofocus: true,
+            autofocus: widget.existing == null,
             textInputAction: TextInputAction.next,
             decoration: const InputDecoration(labelText: 'الاسم'),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _phone,
-            keyboardType: TextInputType.phone,
-            textDirection: TextDirection.ltr,
-            onSubmitted: (_) => _submit(),
-            decoration: const InputDecoration(labelText: 'رقم الهاتف'),
+          Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: TextField(
+                  controller: _phone,
+                  keyboardType: TextInputType.phone,
+                  textDirection: TextDirection.ltr,
+                  decoration: const InputDecoration(labelText: 'رقم الهاتف'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  controller: _age,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'العمر'),
+                ),
+              ),
+            ],
           ),
+          if (!b.feminine) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final g in Gender.values)
+                  ChoiceChip(
+                    label: Text(g.label),
+                    selected: _gender == g,
+                    onSelected: (v) => setState(() => _gender = v ? g : null),
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 18),
+          FilledButton(onPressed: _submit, child: const Text('حفظ')),
         ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('إلغاء'),
-        ),
-        FilledButton(onPressed: _submit, child: const Text('حفظ')),
-      ],
     );
   }
 }
