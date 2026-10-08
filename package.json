@@ -6,7 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && for f in lib/*.js public/*.js; do node --check $f || exit 1; done"
+    "check": "node --check server.js && for f in lib/*.js public/*.js mobile/web/*.js mobile/build-web.js; do node --check $f || exit 1; done",
+    "build:mobile": "node mobile/build-web.js"
   },
   "engines": {
     "node": ">=20"
@@ -15,5 +16,8 @@
     "@anthropic-ai/sdk": "^0.132.0",
     "nodemailer": "^10.0.16",
     "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12"
   }
 }
