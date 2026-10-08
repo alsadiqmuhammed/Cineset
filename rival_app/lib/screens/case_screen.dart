@@ -349,7 +349,12 @@ class _CaseScreenState extends State<CaseScreen> {
                 BrandCard(
                   child: TeethChart(
                     selected: c.teeth.toSet(),
-                    child: (widget.patient.age ?? 99) < 12,
+                    age: widget.patient.age,
+                    deciduous: c.deciduous?.toSet(),
+                    onDeciduous: (d) {
+                      c.deciduous = d == null ? null : (d.toList()..sort());
+                      _save();
+                    },
                     onToggle: (t) {
                       c.teeth.contains(t) ? c.teeth.remove(t) : c.teeth.add(t);
                       c.teeth.sort();

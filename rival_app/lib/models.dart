@@ -65,6 +65,8 @@ class CaseRecord {
   CaseStatus status;
   int? completed;
   final List<int> teeth; // ترقيم FDI
+  List<int>?
+  deciduous; // أماكن الأسنان اللبنية اللي حددها الطبيب (null = حسب العمر)
   final List<String> areas; // مناطق خريطة الوجه (تجميل)
   final Map<String, String>
   doses; // الكمية لكل منطقة، مثلاً "٢٠ وحدة" أو "١ مل"
@@ -86,6 +88,7 @@ class CaseRecord {
     Map<String, String>? doses,
     List<Visit>? visits,
     this.nextVisit,
+    this.deciduous,
   }) : teeth = teeth ?? [],
        areas = areas ?? [],
        doses = doses ?? {},
@@ -107,6 +110,7 @@ class CaseRecord {
     'status': status.name,
     if (completed != null) 'completed': completed,
     'teeth': teeth,
+    if (deciduous != null) 'deciduous': deciduous,
     'areas': areas,
     'doses': doses,
     'visits': [for (final v in visits) v.toJson()],
@@ -128,13 +132,16 @@ class CaseRecord {
     status: CaseStatus.values.asNameMap()[j['status']] ?? CaseStatus.active,
     completed: j['completed'] as int?,
     teeth: [for (final t in (j['teeth'] as List? ?? [])) t as int],
-    areas: [
+    deciduous: j['deciduous'] == null
+        ? null
+        : [for (final t in j['deciduous'] as List) t as int],
+    areas: <String>{
       for (final a in (j['areas'] as List? ?? []))
-        legacyAreaIds[a as String] ?? a,
-    ],
+        ...legacyAreaIds[a as String] ?? [a],
+    }.toList(),
     doses: {
       for (final e in ((j['doses'] as Map?) ?? {}).entries)
-        e.key as String: e.value as String,
+        (legacyAreaIds[e.key]?.first ?? e.key as String): e.value as String,
     },
     nextVisit: j['nextVisit'] as int?,
     visits: [

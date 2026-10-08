@@ -94,6 +94,54 @@ String teethSummary(List<int> teeth) {
   return groups.entries.map((e) => '${ar(e.value)} ${e.key}').join('، ');
 }
 
+/// السن اللبني اللي ينبت بمكان السن الدائمي (القواطع والناب والضواحك فقط).
+int? deciduousOf(int fdi) {
+  if (isPrimaryTooth(fdi)) return fdi;
+  final n = fdi % 10;
+  return n <= 5 ? (fdi ~/ 10 + 4) * 10 + n : null;
+}
+
+/// مكان السن (الرقم الدائمي) لأي سن لبني أو دائمي.
+int positionOf(int fdi) =>
+    isPrimaryTooth(fdi) ? (fdi ~/ 10 - 4) * 10 + fdi % 10 : fdi;
+
+/// عمر بزوغ السن الدائمي تقريباً (بالسنين).
+int eruptionAge(int position) {
+  final n = position % 10;
+  return isUpperTooth(position)
+      ? const {1: 7, 2: 8, 3: 11, 4: 10, 5: 10, 6: 6, 7: 12, 8: 18}[n]!
+      : const {1: 6, 2: 7, 3: 9, 4: 10, 5: 11, 6: 6, 7: 11, 8: 18}[n]!;
+}
+
+const allPositions = [...permanentUpper, ...permanentLower];
+
+/// الأماكن اللي بيها سن لبني حسب العمر (دائمي ما طلع بعد).
+Set<int> deciduousByAge(int? age) => age == null
+    ? {}
+    : {
+        for (final t in allPositions)
+          if (deciduousOf(t) != null && age < eruptionAge(t)) t,
+      };
+
+/// الأضراس الدائمية اللي ما طالعة بعد حسب العمر (تنرسم باهتة).
+Set<int> uneruptedByAge(int? age) => age == null
+    ? {}
+    : {
+        for (final t in allPositions)
+          if (deciduousOf(t) == null && age < eruptionAge(t)) t,
+      };
+
+/// الأماكن اللبنية الفعلية: اختيار الطبيب (أو العمر)، وأي سن لبني مؤشر.
+Set<int> effectiveDeciduous(
+  Set<int>? manual,
+  int? age,
+  Iterable<int> selected,
+) => {
+  ...(manual ?? deciduousByAge(age)),
+  for (final t in selected)
+    if (isPrimaryTooth(t)) positionOf(t),
+};
+
 double _toothWidth(int fdi) {
   final n = fdi % 10;
   if (isPrimaryTooth(fdi)) {
@@ -128,20 +176,13 @@ const teethAspect = 1.25;
 
 /// منحنى القوس (بيزيه) بإحداثيات نسبة من العرض. العلوي ∩ (القواطع فوق)،
 /// والسفلي ∪ (القواطع جوّه).
-List<Offset> _archControl({required bool upper, required bool primary}) {
-  final pts = primary
-      ? const [
-          Offset(0.26, 0.5),
-          Offset(0.22, 0.1),
-          Offset(0.78, 0.1),
-          Offset(0.74, 0.5),
-        ]
-      : const [
-          Offset(0.18, 0.55),
-          Offset(0.12, 0.02),
-          Offset(0.88, 0.02),
-          Offset(0.82, 0.55),
-        ];
+List<Offset> _archControl({required bool upper}) {
+  const pts = [
+    Offset(0.18, 0.55),
+    Offset(0.12, 0.02),
+    Offset(0.88, 0.02),
+    Offset(0.82, 0.55),
+  ];
   if (upper) return pts;
   return [for (final p in pts) Offset(p.dx, teethAspect - p.dy)];
 }
@@ -202,12 +243,13 @@ double _toothDepth(int fdi) {
   }[n]!;
 }
 
-/// أماكن الأسنان بمقاس [size] (العرض : الارتفاع = ١ : ١.٢٥).
-List<ToothSpot> toothLayout(Size size, {required bool primary}) {
+/// أماكن الأسنان الـ٣٢ بمقاس [size] (العرض : الارتفاع = ١ : ١.٢٥).
+/// السن اللبني ينرسم بنفس مكان الدائمي اللي يطلع بداله.
+List<ToothSpot> toothLayout(Size size) {
   final w = size.width;
   final spots = <ToothSpot>[];
   void arch(List<int> teeth, bool upper) {
-    final a = _Arch(_archControl(upper: upper, primary: primary), w);
+    final a = _Arch(_archControl(upper: upper), w);
     final total = teeth.fold(0.0, (s, t) => s + _toothWidth(t));
     final unit = a.total / total;
     var acc = 0.0;
@@ -226,15 +268,16 @@ List<ToothSpot> toothLayout(Size size, {required bool primary}) {
     }
   }
 
-  arch(primary ? primaryUpper : permanentUpper, true);
-  arch(primary ? primaryLower : permanentLower, false);
+  arch(permanentUpper, true);
+  arch(permanentLower, false);
   return spots;
 }
 
-int? toothAt(Size size, Offset p, {required bool primary}) {
+/// مكان السن (الرقم الدائمي) تحت النقطة [p].
+int? toothAt(Size size, Offset p) {
   ToothSpot? best;
   var dist = double.infinity;
-  for (final s in toothLayout(size, primary: primary)) {
+  for (final s in toothLayout(size)) {
     final d = (s.center - p).distance;
     if (d < dist) {
       dist = d;
@@ -253,19 +296,28 @@ const _palate = Color(0xFFF2B9BE);
 const _enamel = Color(0xFFFFFDF8);
 const _enamelShade = Color(0xFFE9E1D3);
 const _enamelLine = Color(0xFFC9BDAA);
+const _babyEnamel = Color(0xFFFFF4DC);
+const _babyEnamelShade = Color(0xFFF1DDB4);
 
 /// خريطة الأسنان مرسومة مثل الرسوم الطبية: لثة وحنك، وأسنان من فوق
 /// (القواطع رفيعة، والأضراس بخطوط تيجانها). بدون أرقام.
 class ToothChartPainter extends CustomPainter {
+  /// الأسنان المؤشرة (أرقام FDI دائمية أو لبنية).
   final Set<int> selected;
-  final bool primary;
+
+  /// الأماكن اللي بيها سن لبني (بالرقم الدائمي للمكان).
+  final Set<int> deciduous;
+
+  /// الأضراس الدائمية اللي ما طالعة بعد (تنرسم باهتة).
+  final Set<int> unerupted;
   final Brand brand;
   final double fontScale;
   final bool labels;
   ToothChartPainter({
     required this.selected,
-    required this.primary,
     required this.brand,
+    this.deciduous = const {},
+    this.unerupted = const {},
     this.fontScale = 1,
     this.labels = true,
   });
@@ -273,10 +325,10 @@ class ToothChartPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
-    final spots = toothLayout(size, primary: primary);
+    final spots = toothLayout(size);
     final unit = spots.first.width / _toothWidth(spots.first.fdi) / 0.97;
     for (final upper in [true, false]) {
-      final a = _Arch(_archControl(upper: upper, primary: primary), w);
+      final a = _Arch(_archControl(upper: upper), w);
       final path = a.path();
       // الحنك (أو مكان اللسان) داخل القوس.
       final inner = Path.from(path)..close();
@@ -310,7 +362,17 @@ class ToothChartPainter extends CustomPainter {
       );
     }
     for (final s in spots) {
-      _tooth(canvas, s, selected.contains(s.fdi), w);
+      final baby = deciduous.contains(s.fdi) && deciduousOf(s.fdi) != null;
+      final code = baby ? deciduousOf(s.fdi)! : s.fdi;
+      final spot = baby
+          ? ToothSpot(code, s.center, s.angle, s.width * 0.8, s.height * 0.8)
+          : s;
+      final faded = !baby && unerupted.contains(s.fdi);
+      if (faded) {
+        canvas.saveLayer(null, Paint()..color = const Color(0x59000000));
+      }
+      _tooth(canvas, spot, selected.contains(code), w, baby: baby);
+      if (faded) canvas.restore();
     }
     if (!labels) return;
     final f = w * 0.034 * fontScale;
@@ -338,7 +400,13 @@ class ToothChartPainter extends CustomPainter {
     );
   }
 
-  void _tooth(Canvas canvas, ToothSpot s, bool on, double w) {
+  void _tooth(
+    Canvas canvas,
+    ToothSpot s,
+    bool on,
+    double w, {
+    bool baby = false,
+  }) {
     final n = s.fdi % 10;
     final molar = isPrimaryTooth(s.fdi) ? n >= 4 : n >= 6;
     final premolar = !isPrimaryTooth(s.fdi) && (n == 4 || n == 5);
@@ -366,8 +434,12 @@ class ToothChartPainter extends CustomPainter {
         ..color = const Color(0x33000000)
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, s.width * 0.06),
     );
-    final top = on ? Color.lerp(brand.primary, Colors.white, 0.25)! : _enamel;
-    final bottom = on ? brand.primaryDeep : _enamelShade;
+    final top = on
+        ? Color.lerp(brand.primary, Colors.white, 0.25)!
+        : (baby ? _babyEnamel : _enamel);
+    final bottom = on
+        ? brand.primaryDeep
+        : (baby ? _babyEnamelShade : _enamelShade);
     canvas.drawRRect(
       shape,
       Paint()
@@ -414,7 +486,10 @@ class ToothChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(ToothChartPainter old) =>
-      old.selected != selected || old.primary != primary || old.brand != brand;
+      old.selected != selected ||
+      old.deciduous != deciduous ||
+      old.unerupted != unerupted ||
+      old.brand != brand;
 }
 
 // ======================================================= خريطة الوجه
@@ -459,7 +534,8 @@ const faceAreas = [
     0.02,
     0.042,
   ),
-  FaceArea('lips', 'الشفايف', Offset(0.5, 0.722), 0.08, 0.032),
+  FaceArea('lip_upper', 'الشفة العليا', Offset(0.5, 0.706), 0.065, 0.016),
+  FaceArea('lip_lower', 'الشفة السفلى', Offset(0.5, 0.742), 0.065, 0.018),
   FaceArea(
     'marionette_r',
     'خط الماريونيت الأيمن',
@@ -483,13 +559,14 @@ const faceAreas = [
 /// الوجه أطول من عرضه: الارتفاع = ١.٢٥ × العرض.
 const faceAspect = 1.25;
 
-/// أسماء النسخة الأولى (نصوص حرة) تتحول لمناطق الخريطة.
+/// أسماء النسخ القديمة تتحول لمناطق الخريطة (الشفايف صارت شفتين).
 const legacyAreaIds = {
-  'الشفايف': 'lips',
-  'الجبهة': 'forehead',
-  'الذقن': 'chin',
-  'الأنف': 'nose',
-  'الرقبة': 'neck',
+  'الشفايف': ['lip_upper', 'lip_lower'],
+  'lips': ['lip_upper', 'lip_lower'],
+  'الجبهة': ['forehead'],
+  'الذقن': ['chin'],
+  'الأنف': ['nose'],
+  'الرقبة': ['neck'],
 };
 
 String areaLabel(String id) {
@@ -556,6 +633,31 @@ class FaceMapPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..color = ink;
 
+    // خلفية ناعمة: دائرة وردية وقلوب ولمعات صغيرة.
+    canvas.drawCircle(
+      p(0.5, 0.6),
+      w * 0.56,
+      Paint()
+        ..shader = ui.Gradient.radial(
+          p(0.5, 0.6),
+          w * 0.56,
+          [
+            brand.accent.withValues(alpha: 0.2),
+            brand.accent.withValues(alpha: 0.06),
+            brand.accent.withValues(alpha: 0),
+          ],
+          [0, 0.75, 1],
+        ),
+    );
+    for (final (x, y, r) in const [
+      (0.1, 0.18, 0.018),
+      (0.92, 0.42, 0.014),
+      (0.07, 0.62, 0.012),
+      (0.93, 0.86, 0.017),
+    ]) {
+      _heart(canvas, p(x, y), w * r, brand.highlight.withValues(alpha: 0.35));
+    }
+
     // الشعر (ورا الوجه).
     final hair = Path()..moveTo(p(0.5, 0.05).dx, p(0.5, 0.05).dy);
     cubic(hair, [0.84, 0.05, 0.93, 0.32, 0.9, 0.6]);
@@ -573,6 +675,25 @@ class FaceMapPainter extends CustomPainter {
         ]),
     );
     canvas.drawPath(hair, thin..color = brand.accent.withValues(alpha: 0.7));
+    // خصلات ناعمة متموجة.
+    for (final sgn in [-1.0, 1.0]) {
+      for (var k = 0; k < 3; k++) {
+        final x0 = 0.5 + sgn * (0.33 + k * 0.035);
+        final strand = Path()..moveTo(p(x0, 0.5).dx, p(x0, 0.5).dy);
+        cubic(strand, [
+          0.5 + sgn * (0.37 + k * 0.035),
+          0.68,
+          0.5 + sgn * (0.31 + k * 0.035),
+          0.82,
+          0.5 + sgn * (0.36 + k * 0.04),
+          1.0,
+        ]);
+        canvas.drawPath(
+          strand,
+          thin..color = brand.accent.withValues(alpha: 0.45),
+        );
+      }
+    }
     thin.color = ink;
 
     // الرقبة والكتفين.
@@ -616,17 +737,28 @@ class FaceMapPainter extends CustomPainter {
     canvas.drawPath(fringe, thin..color = brand.accent.withValues(alpha: 0.75));
     thin.color = ink;
 
-    // حمرة الخدود.
+    // حمرة الخدود مع خطوط صغيرة لطيفة.
     for (final x in [0.33, 0.67]) {
       canvas.drawCircle(
         p(x, 0.62),
         w * 0.075,
         Paint()
           ..shader = ui.Gradient.radial(p(x, 0.62), w * 0.075, [
-            _lipBottom.withValues(alpha: 0.16),
+            _lipBottom.withValues(alpha: 0.28),
             _lipBottom.withValues(alpha: 0),
           ]),
       );
+      for (var k = -1; k <= 1; k++) {
+        final c = p(x + k * 0.022, 0.628);
+        canvas.drawLine(
+          c + Offset(w * 0.006, -w * 0.01),
+          c + Offset(-w * 0.006, w * 0.01),
+          Paint()
+            ..strokeWidth = math.max(0.8, w * 0.0035)
+            ..strokeCap = StrokeCap.round
+            ..color = _lipBottom.withValues(alpha: 0.45),
+        );
+      }
     }
 
     for (final sgn in [-1.0, 1.0]) {
@@ -768,13 +900,29 @@ class FaceMapPainter extends CustomPainter {
         p(0.43, 0.718).dx,
         p(0.43, 0.718).dy,
       );
-    final lipPaint = Paint()
-      ..shader = ui.Gradient.linear(p(0.5, 0.69), p(0.5, 0.772), [
-        _lipTop,
-        _lipBottom,
-      ]);
-    canvas.drawPath(upperLip, lipPaint);
-    canvas.drawPath(lowerLip, lipPaint);
+    Paint lipPaint(bool on) => Paint()
+      ..shader = ui.Gradient.linear(
+        p(0.5, 0.69),
+        p(0.5, 0.772),
+        on
+            ? [Color.lerp(brand.primary, Colors.white, 0.3)!, brand.primary]
+            : [_lipTop, _lipBottom],
+      );
+    for (final (id, path) in [
+      ('lip_upper', upperLip),
+      ('lip_lower', lowerLip),
+    ]) {
+      final on = selected.contains(id);
+      if (on) {
+        canvas.drawPath(
+          path,
+          Paint()
+            ..color = brand.primary.withValues(alpha: 0.45)
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.012),
+        );
+      }
+      canvas.drawPath(path, lipPaint(on));
+    }
     canvas.drawPath(upperLip, thin..color = _lipBottom);
     canvas.drawPath(lowerLip, thin);
     canvas.drawCircle(
@@ -784,11 +932,12 @@ class FaceMapPainter extends CustomPainter {
     );
     thin.color = ink;
 
-    // المناطق: نقاط ناعمة، وتوهج لما تتأشر.
+    // المناطق: نقاط ناعمة، وقلب متوهج لما تتأشر.
     for (final a in faceAreas) {
       final r = a.rect(size);
       final on = selected.contains(a.id);
-      if (on) {
+      final lip = a.id.startsWith('lip_');
+      if (on && !lip) {
         canvas.save();
         canvas.translate(r.center.dx, r.center.dy);
         canvas.scale(1, r.height / r.width);
@@ -809,22 +958,32 @@ class FaceMapPainter extends CustomPainter {
         );
         canvas.restore();
       }
-      final dot = w * (on ? 0.016 : 0.012);
-      canvas.drawCircle(
-        r.center,
-        dot,
-        Paint()
-          ..color = on ? brand.primary : Colors.white.withValues(alpha: 0.85),
-      );
-      canvas.drawCircle(
-        r.center,
-        dot,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = math.max(1, w * (on ? 0.005 : 0.003))
-          ..color = on ? Colors.white : brand.highlight.withValues(alpha: 0.55),
-      );
-      if (!on) {
+      if (on) {
+        // الشفة المؤشرة تتلون بنفسها، وباقي المناطق قلب.
+        if (!lip) {
+          _heart(
+            canvas,
+            r.center,
+            w * 0.02,
+            brand.primary,
+            stroke: Colors.white,
+          );
+        }
+      } else {
+        final dot = w * 0.012;
+        canvas.drawCircle(
+          r.center,
+          dot,
+          Paint()..color = Colors.white.withValues(alpha: 0.85),
+        );
+        canvas.drawCircle(
+          r.center,
+          dot,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = math.max(1, w * 0.003)
+            ..color = brand.highlight.withValues(alpha: 0.55),
+        );
         canvas.drawCircle(
           r.center,
           w * 0.0035,
@@ -835,7 +994,9 @@ class FaceMapPainter extends CustomPainter {
         _pill(
           canvas,
           doses[a.id]!,
-          r.center + Offset(0, -w * 0.04),
+          lip
+              ? Offset(r.right + w * 0.06, r.center.dy)
+              : r.center + Offset(0, -w * 0.04),
           w * 0.024,
           brand,
         );
@@ -844,6 +1005,46 @@ class FaceMapPainter extends CustomPainter {
     // نجمة لمعة.
     _star(canvas, p(0.86, 0.14), w * 0.025, brand.accent);
     _star(canvas, p(0.9, 0.2), w * 0.012, brand.accent);
+  }
+
+  void _heart(Canvas canvas, Offset c, double r, Color color, {Color? stroke}) {
+    final path = Path()
+      ..moveTo(c.dx, c.dy + r * 0.9)
+      ..cubicTo(
+        c.dx - r * 1.3,
+        c.dy + r * 0.1,
+        c.dx - r * 0.9,
+        c.dy - r * 1.05,
+        c.dx,
+        c.dy - r * 0.35,
+      )
+      ..cubicTo(
+        c.dx + r * 0.9,
+        c.dy - r * 1.05,
+        c.dx + r * 1.3,
+        c.dy + r * 0.1,
+        c.dx,
+        c.dy + r * 0.9,
+      )
+      ..close();
+    if (stroke != null) {
+      canvas.drawPath(
+        path.shift(Offset(0, r * 0.15)),
+        Paint()
+          ..color = const Color(0x33000000)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 0.3),
+      );
+    }
+    canvas.drawPath(path, Paint()..color = color);
+    if (stroke != null) {
+      canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = r * 0.22
+          ..color = stroke,
+      );
+    }
   }
 
   void _star(Canvas canvas, Offset c, double r, Color color) {

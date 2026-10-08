@@ -3,16 +3,29 @@ import 'package:flutter/material.dart';
 import '../brand.dart';
 import '../charts.dart';
 
-/// خريطة الأسنان مرسومة (الفكين واللثة)، مثل ما يشوفها الطبيب مقابل المراجع. بدون أرقام.
+/// خريطة الأسنان مرسومة (الفكين واللثة، ٣٢ مكان مع ضروس العقل)، مثل ما
+/// يشوفها الطبيب مقابل المراجع. بدون أرقام. كل مكان يصير لبني أو دائمي،
+/// والافتراضي حسب عمر المراجع.
 class TeethChart extends StatefulWidget {
   final Set<int> selected;
   final ValueChanged<int> onToggle;
-  final bool child;
+
+  /// عمر المراجع (حتى يتحدد اللبني والدائمي تلقائياً).
+  final int? age;
+
+  /// الأماكن اللبنية اللي حددها الطبيب يدوياً (null = حسب العمر).
+  final Set<int>? deciduous;
+
+  /// يتغير لما الطبيب يقلب نوع سن: الأماكن اللبنية الجديدة، وnull يعني رجوع للعمر.
+  final void Function(Set<int>? deciduous) onDeciduous;
+
   const TeethChart({
     super.key,
     required this.selected,
     required this.onToggle,
-    this.child = false,
+    required this.onDeciduous,
+    this.age,
+    this.deciduous,
   });
 
   @override
@@ -20,24 +33,76 @@ class TeethChart extends StatefulWidget {
 }
 
 class _TeethChartState extends State<TeethChart> {
-  late bool _primary = widget.child || widget.selected.any(isPrimaryTooth);
+  bool _typeMode = false;
+
+  Set<int> get _deciduous =>
+      effectiveDeciduous(widget.deciduous, widget.age, widget.selected);
+
+  void _tap(int pos) {
+    final dec = _deciduous;
+    if (!_typeMode) {
+      widget.onToggle(dec.contains(pos) ? deciduousOf(pos)! : pos);
+      return;
+    }
+    final baby = deciduousOf(pos);
+    if (baby == null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'الأضراس الدائمية (السادس والسابع والعقل) ما إلها لبني',
+            ),
+          ),
+        );
+      return;
+    }
+    final toBaby = !dec.contains(pos);
+    // السن المؤشر يتحول وياه.
+    final from = toBaby ? pos : baby, to = toBaby ? baby : pos;
+    if (widget.selected.contains(from)) {
+      widget.onToggle(from);
+      widget.onToggle(to);
+    }
+    widget.onDeciduous(toBaby ? ({...dec}..add(pos)) : ({...dec}..remove(pos)));
+  }
 
   @override
   Widget build(BuildContext context) {
     final b = context.brand;
     final selected = widget.selected.toList()..sort();
+    final dec = _deciduous;
+    final byAge = widget.deciduous == null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Center(
           child: SegmentedButton<bool>(
             segments: const [
-              ButtonSegment(value: false, label: Text('دائمية')),
-              ButtonSegment(value: true, label: Text('لبنية')),
+              ButtonSegment(
+                value: false,
+                label: Text('تأشير'),
+                icon: Icon(Icons.touch_app_outlined, size: 18),
+              ),
+              ButtonSegment(
+                value: true,
+                label: Text('لبني ↔ دائمي'),
+                icon: Icon(Icons.swap_horiz, size: 18),
+              ),
             ],
-            selected: {_primary},
-            onSelectionChanged: (s) => setState(() => _primary = s.first),
+            selected: {_typeMode},
+            onSelectionChanged: (s) => setState(() => _typeMode = s.first),
           ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          _typeMode
+              ? 'اضغط على السن حتى تقلبه لبني أو دائمي'
+              : (widget.age == null
+                    ? 'الأسنان دائمية. سجّل مواليد المراجع حتى تتحدد اللبنية تلقائياً'
+                    : 'الأسنان حسب عمر المراجع (${ar(widget.age!)} سنة)${byAge ? '' : '، مع تعديلك'}'),
+          textAlign: TextAlign.center,
+          style: TextStyle(color: b.muted, fontSize: 12),
         ),
         const SizedBox(height: 8),
         Center(
@@ -50,18 +115,15 @@ class _TeethChartState extends State<TeethChart> {
                   final size = box.biggest;
                   return GestureDetector(
                     onTapUp: (d) {
-                      final t = toothAt(
-                        size,
-                        d.localPosition,
-                        primary: _primary,
-                      );
-                      if (t != null) widget.onToggle(t);
+                      final t = toothAt(size, d.localPosition);
+                      if (t != null) _tap(t);
                     },
                     child: CustomPaint(
                       size: size,
                       painter: ToothChartPainter(
                         selected: widget.selected,
-                        primary: _primary,
+                        deciduous: dec,
+                        unerupted: uneruptedByAge(widget.age),
                         brand: b,
                       ),
                     ),
@@ -70,6 +132,31 @@ class _TeethChartState extends State<TeethChart> {
               ),
             ),
           ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          runSpacing: 4,
+          children: [
+            _Legend(color: const Color(0xFFFFFDF8), label: 'دائمي', b: b),
+            _Legend(color: const Color(0xFFF1DDB4), label: 'لبني', b: b),
+            if (uneruptedByAge(widget.age).isNotEmpty)
+              _Legend(
+                color: const Color(0xFFFFFDF8),
+                label: 'ما طالع بعد',
+                b: b,
+                faded: true,
+              ),
+            _Legend(color: b.primary, label: 'معالج', b: b),
+            if (!byAge)
+              TextButton.icon(
+                onPressed: () => widget.onDeciduous(null),
+                icon: const Icon(Icons.restart_alt, size: 18),
+                label: const Text('حسب العمر'),
+              ),
+          ],
         ),
         if (selected.isNotEmpty) ...[
           const SizedBox(height: 8),
@@ -87,7 +174,7 @@ class _TeethChartState extends State<TeethChart> {
               for (final t in selected)
                 InputChip(
                   label: Text(
-                    '$t · ${toothName(t)}',
+                    toothName(t),
                     style: const TextStyle(fontSize: 12),
                   ),
                   onDeleted: () => widget.onToggle(t),
@@ -95,15 +182,44 @@ class _TeethChartState extends State<TeethChart> {
                 ),
             ],
           ),
-        ] else
-          Text(
-            'اضغط على السن حتى تأشره',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: b.muted, fontSize: 12),
-          ),
+        ],
       ],
     );
   }
+}
+
+class _Legend extends StatelessWidget {
+  final Color color;
+  final String label;
+  final Brand b;
+  final bool faded;
+  const _Legend({
+    required this.color,
+    required this.label,
+    required this.b,
+    this.faded = false,
+  });
+
+  @override
+  Widget build(BuildContext context) => Opacity(
+    opacity: faded ? 0.45 : 1,
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFFC9BDAA)),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(color: b.muted, fontSize: 12)),
+      ],
+    ),
+  );
 }
 
 /// خريطة الوجه: اضغط على المنطقة حتى تأشرها، ومرة ثانية حتى تكتب الكمية.

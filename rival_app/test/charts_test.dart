@@ -10,8 +10,7 @@ void main() {
   const size = Size(800, 800);
 
   group('tooth chart', () {
-    ToothSpot spot(int t, {bool primary = false}) =>
-        toothLayout(size, primary: primary).firstWhere((s) => s.fdi == t);
+    ToothSpot spot(int t) => toothLayout(size).firstWhere((s) => s.fdi == t);
 
     test('FDI order as the dentist faces the patient', () {
       // يمين المراجع (الربع ١ و٤) على يسار الشاشة.
@@ -27,11 +26,11 @@ void main() {
     });
 
     test('every tooth is tappable and no two teeth overlap', () {
-      for (final primary in [false, true]) {
-        final spots = toothLayout(size, primary: primary);
-        expect(spots, hasLength(primary ? 20 : 32));
+      {
+        final spots = toothLayout(size);
+        expect(spots, hasLength(32));
         for (final s in spots) {
-          expect(toothAt(size, s.center, primary: primary), s.fdi);
+          expect(toothAt(size, s.center), s.fdi);
         }
         for (var i = 0; i < spots.length; i++) {
           for (var j = i + 1; j < spots.length; j++) {
@@ -45,7 +44,41 @@ void main() {
           }
         }
       }
-      expect(toothAt(size, const Offset(400, 400), primary: false), isNull);
+      expect(toothAt(size, const Offset(400, 400)), isNull);
+    });
+
+    test('baby or permanent per tooth, by age', () {
+      expect(deciduousOf(11), 51);
+      expect(deciduousOf(24), 64);
+      expect(deciduousOf(16), isNull);
+      expect(positionOf(75), 35);
+      expect(positionOf(36), 36);
+      // طفل ٥ سنين: كل الأماكن اللبنية العشرين، والأضراس الدائمية ما طالعة.
+      expect(deciduousByAge(5), hasLength(20));
+      expect(uneruptedByAge(5), hasLength(12));
+      // ٨ سنين: القواطع المركزية والجانبية السفلية والأضراس الأولى طالعة.
+      final eight = deciduousByAge(8);
+      expect(eight.contains(11), isFalse);
+      expect(eight.contains(12), isFalse);
+      expect(eight.contains(41), isFalse);
+      expect(eight.contains(13), isTrue);
+      expect(uneruptedByAge(8).contains(16), isFalse);
+      expect(uneruptedByAge(8).contains(17), isTrue);
+      // بالغ: كلها دائمية.
+      expect(deciduousByAge(30), isEmpty);
+      expect(uneruptedByAge(30), isEmpty);
+      expect(deciduousByAge(null), isEmpty);
+      // اختيار الطبيب يغلب العمر، والسن اللبني المؤشر يبقى لبني.
+      expect(effectiveDeciduous({13}, 5, [54]), {13, 14});
+      expect(effectiveDeciduous(null, 30, [61]), {21});
+      final c = CaseRecord(id: '1', title: 't', created: 0, deciduous: [13]);
+      expect(CaseRecord.fromJson(c.toJson()).deciduous, [13]);
+      expect(
+        CaseRecord.fromJson(
+          CaseRecord(id: '1', title: 't', created: 0).toJson(),
+        ).deciduous,
+        isNull,
+      );
     });
 
     test('tooth names and summary', () {
@@ -79,11 +112,22 @@ void main() {
         'created': 0,
         'areas': ['الشفايف', 'الجبهة', 'منطقة ثانية'],
       });
-      expect(c.areas, ['lips', 'forehead', 'منطقة ثانية']);
-      expect(areaLabel('lips'), 'الشفايف');
+      expect(c.areas, ['lip_upper', 'lip_lower', 'forehead', 'منطقة ثانية']);
+      expect(areaLabel('lip_upper'), 'الشفة العليا');
+      expect(areaLabel('lip_lower'), 'الشفة السفلى');
       expect(areaLabel('منطقة ثانية'), 'منطقة ثانية');
-      c.doses['lips'] = '١ مل';
-      expect(CaseRecord.fromJson(c.toJson()).doses, {'lips': '١ مل'});
+      c.doses['lip_lower'] = '١ مل';
+      expect(CaseRecord.fromJson(c.toJson()).doses, {'lip_lower': '١ مل'});
+      // نسخة الشفايف الوحدة تتحول للشفتين، والكمية تروح للعليا.
+      final old = CaseRecord.fromJson({
+        'id': '2',
+        'title': 'فلر',
+        'created': 0,
+        'areas': ['lips', 'chin'],
+        'doses': {'lips': '١ مل'},
+      });
+      expect(old.areas, ['lip_upper', 'lip_lower', 'chin']);
+      expect(old.doses, {'lip_upper': '١ مل'});
     });
   });
 
@@ -128,13 +172,13 @@ void main() {
         created: day(30),
         status: CaseStatus.done,
         completed: day(2),
-        areas: ['lips'],
-        doses: {'lips': '١ مل'},
+        areas: ['lip_upper', 'lip_lower'],
+        doses: {'lip_upper': '١ مل'},
       );
       final s = caseSummary(beauty, p, c, null, now: now);
       expect(s, startsWith('جلسة فلر للمراجعة زينب'));
       expect(s, contains('خلال ٢٨ يوم'));
-      expect(s, contains('الشفايف (١ مل)'));
+      expect(s, contains('الشفة العليا (١ مل)، الشفة السفلى'));
       expect(
         caseAlerts(beauty, c, now: now),
         contains('الحالة مكتملة بدون صورة "بعد".'),

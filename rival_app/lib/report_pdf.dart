@@ -569,13 +569,14 @@ Future<Uint8List?> _composite(CaseRecord c, Brand b) async {
   return data!.buffer.asUint8List();
 }
 
-Future<Uint8List?> _chart(CaseRecord c, Brand b) async {
+Future<Uint8List?> _chart(CaseRecord c, Brand b, int? age) async {
   if (b.teethChart) {
     if (c.teeth.isEmpty) return null;
     return paintToPng(
       ToothChartPainter(
         selected: c.teeth.toSet(),
-        primary: c.teeth.any(isPrimaryTooth),
+        deciduous: effectiveDeciduous(c.deciduous?.toSet(), age, c.teeth),
+        unerupted: uneruptedByAge(age),
         brand: b,
         fontScale: 1.1,
       ),
@@ -609,7 +610,7 @@ Future<List<pw.Widget>> _caseBody(
   final b = k.b;
   final doctor = Store.instance.doctor(c.doctorId);
   final photo = await _composite(c, b);
-  final chart = await _chart(c, b);
+  final chart = await _chart(c, b, p.age);
   final facts = CaseFacts.of(c);
   final alerts = caseAlerts(b, c);
   final done = c.status == CaseStatus.done;

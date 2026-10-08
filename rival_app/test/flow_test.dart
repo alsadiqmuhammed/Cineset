@@ -125,10 +125,7 @@ void main() {
     );
     final box = tester.getRect(paint);
     for (final t in [11, 21]) {
-      final spot = toothLayout(
-        box.size,
-        primary: false,
-      ).firstWhere((s) => s.fdi == t);
+      final spot = toothLayout(box.size).firstWhere((s) => s.fdi == t);
       await tester.tapAt(box.topLeft + spot.center);
       await tester.pump();
     }
@@ -266,8 +263,8 @@ void main() {
             .subtract(const Duration(days: 20))
             .millisecondsSinceEpoch,
         doctorId: 'b1',
-        areas: ['lips', 'nasolabial_r', 'nasolabial_l'],
-        doses: {'lips': '١ مل', 'nasolabial_r': '٠.٥ مل'},
+        areas: ['lip_upper', 'lip_lower', 'nasolabial_r', 'nasolabial_l'],
+        doses: {'lip_upper': '١ مل', 'nasolabial_r': '٠.٥ مل'},
         nextVisit: DateTime.now()
             .add(const Duration(days: 14))
             .millisecondsSinceEpoch,
