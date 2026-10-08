@@ -543,7 +543,7 @@ Future<ui.Image?> renderReportComposite(CaseRecord c, Brand brand) async {
       afterPhoto: c.after!,
       brand: brand,
       format: format,
-      framing: Framing(zoom: z.clamp(0.4, 2.5), offsetY: offsetY),
+      framing: Framing(zoom: z.clamp(0.4, 6.0), offsetY: offsetY),
     ),
     scale: 0.7,
   );

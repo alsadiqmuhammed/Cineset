@@ -455,5 +455,5 @@ Framing fitFraming(Rect cell, ui.Image img, Photo p, Framing f) {
     p,
     f,
   );
-  return f.copyWith(zoom: math.max(1.0, z).clamp(0.3, 4.0));
+  return f.copyWith(zoom: math.max(1.0, z).clamp(0.3, 6.0));
 }
