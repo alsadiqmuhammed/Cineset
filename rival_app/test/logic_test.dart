@@ -54,7 +54,7 @@ void main() {
     test('cover zoom removes black bars and no less', () {
       const p = Photo('x', a: Offset(250, 700), b: Offset(650, 720));
       const img = Size(900, 1200);
-      final z = coverZoom(cell, img, p, 0.1);
+      final z = coverZoom(cell, img, p, const Framing(offsetY: 0.1));
       bool covers(double zoom) {
         final m = CellMapping.of(
           cell,

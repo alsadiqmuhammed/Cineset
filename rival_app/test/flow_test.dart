@@ -8,7 +8,8 @@ import 'package:rival_clinic/main.dart';
 import 'package:rival_clinic/models.dart';
 import 'package:rival_clinic/render.dart';
 import 'package:rival_clinic/report_pdf.dart';
-import 'package:rival_clinic/screens/compose_screen.dart';
+import 'package:rival_clinic/design.dart';
+import 'package:rival_clinic/screens/design_canvas.dart';
 import 'package:rival_clinic/stats.dart';
 import 'package:rival_clinic/store.dart';
 
@@ -139,15 +140,43 @@ void main() {
     await settle(tester);
     expect(find.text('محاذاة جاهزة'), findsNWidgets(2));
 
+    await tester.runAsync(() async {
+      for (final t in templatesFor(Section.dental)) {
+        await loadAssetImage(t.asset);
+      }
+    });
     await tester.tap(find.text('تصميم قبل وبعد'));
     await settle(tester);
-    final preview = tester.widget<RawImage>(
-      find.descendant(
-        of: find.byType(ComposeScreen),
-        matching: find.byType(RawImage),
+    // المعاينة الحيّة جاهزة بقالب البوست (صورتين).
+    expect(find.byType(DesignCanvas), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('بوست · صورتين'), findsOneWidget);
+
+    // نجرب نختار قالب صورة وحدة، ونضبب.
+    await tester.tap(find.text('بوست · صورة'));
+    await settle(tester);
+    expect(find.text('صورة بعد'), findsOneWidget);
+    await tester.drag(
+      find.byIcon(Icons.open_with),
+      const Offset(300, 0),
+    ); // شريط الأدوات يتمرر
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.blur_on));
+    await tester.pump();
+    await tester.timedDrag(
+      find.byType(DesignCanvas),
+      const Offset(60, 60),
+      const Duration(milliseconds: 300),
+    );
+    await settle(tester, 3);
+    expect(find.byTooltip('تراجع'), findsOneWidget);
+    final undo = tester.widget<IconButton>(
+      find.ancestor(
+        of: find.byIcon(Icons.undo),
+        matching: find.byType(IconButton),
       ),
     );
-    expect(preview.image, isNotNull);
+    expect(undo.onPressed, isNotNull);
   });
 
   testWidgets('all four PDF reports are generated', (tester) async {

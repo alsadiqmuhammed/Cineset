@@ -6,15 +6,18 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../brand.dart';
+import '../design.dart';
 import '../models.dart';
 import '../render.dart';
 import '../store.dart';
 import '../video.dart';
 import 'common.dart';
+import 'design_canvas.dart';
 import 'design_controls.dart';
 
 const _videoSize = Size(1080, 1920);
 
+/// فيديو التحوّل: نفس المحرر (تحريك، تضبيب، رسم) وقالب الستوري أو إطار الهوية.
 class VideoScreen extends StatefulWidget {
   final CaseRecord record;
   const VideoScreen({super.key, required this.record});
@@ -24,14 +27,17 @@ class VideoScreen extends StatefulWidget {
 }
 
 class _VideoScreenState extends State<VideoScreen> {
-  ui.Image? _before, _after, _overlay, _logo, _preview;
-  late Framing _framing;
+  final _c = DesignController();
+  final Map<Which, (ui.Image, Photo)> _photos = {};
+  ui.Image? _logo, _templateImg, _overlay;
+  late final DesignTemplate _story = templatesFor(_brand.section)
+      .firstWhere((t) => t.format == PostFormat.story && t.photos == 1);
+  bool _useTemplate = true;
   String? _overlayPath;
   bool _labels = true;
   bool _brandFrame = true;
-  bool _showAfter = false;
   bool _working = false;
-  int _generation = 0;
+  bool _ready = false;
   String? _video;
   VideoPlayerController? _player;
 
@@ -40,36 +46,51 @@ class _VideoScreenState extends State<VideoScreen> {
   @override
   void initState() {
     super.initState();
-    final offsetY = _brand.alignTarget == AlignTarget.eyes ? 0.06 : 0.0;
-    _framing = Framing(offsetY: offsetY);
+    _c.addListener(_invalidate);
     () async {
-      _before = await loadImage(widget.record.before!.path);
-      _after = await loadImage(widget.record.after!.path);
+      final r = widget.record;
+      _photos[Which.before] = (await loadImage(r.before!.path), r.before!);
+      _photos[Which.after] = (await loadImage(r.after!.path), r.after!);
       _logo = await loadAssetImage(_brand.logoReversed);
-      var z = 1.0;
-      for (final (img, photo) in [
-        (_before!, widget.record.before!),
-        (_after!, widget.record.after!),
-      ]) {
-        final size = Size(img.width.toDouble(), img.height.toDouble());
-        z = math.max(
-          z,
-          coverZoom(Offset.zero & _videoSize, size, photo, offsetY),
-        );
-      }
-      _framing = Framing(zoom: z.clamp(0.4, 2.5), offsetY: offsetY);
-      _refresh();
+      _templateImg = await loadAssetImage(_story.asset);
+      _fit();
+      if (mounted) setState(() => _ready = true);
     }();
   }
 
   @override
   void dispose() {
     _player?.dispose();
+    _c.dispose();
     super.dispose();
   }
 
+  /// أي تعديل يلغي الفيديو القديم.
+  void _invalidate() {
+    if (_player == null) return;
+    _player!.dispose();
+    _player = null;
+    _video = null;
+    if (mounted) setState(() {});
+  }
+
+  Rect get _slot =>
+      _useTemplate ? _story.slots.first : Offset.zero & _videoSize;
+
+  void _fit() {
+    final which = _c.fills.isEmpty ? Which.before : _c.fills.first.which;
+    var f = Framing(offsetY: _brand.alignTarget == AlignTarget.eyes ? -0.1 : 0);
+    // تقريب يملأ الشباك بالصورتين (الفيديو يتنقل بيناتهن).
+    var z = 1.0;
+    for (final p in _photos.values) {
+      z = math.max(z, fitFraming(_slot, p.$1, p.$2, f).zoom);
+    }
+    f = f.copyWith(zoom: z);
+    _c.setFills([SlotFill(which, f)]);
+  }
+
   BrandFrame? get _frameSpec {
-    if (!_brandFrame || _logo == null) return null;
+    if (_useTemplate || !_brandFrame || _logo == null) return null;
     final d = Store.instance.doctor(widget.record.doctorId);
     return BrandFrame(
       _brand,
@@ -78,70 +99,40 @@ class _VideoScreenState extends State<VideoScreen> {
     );
   }
 
-  /// إطار الصورة. بالمعاينة يجي ويه القالب والإطار؛ للفيديو يترسمون بطبقة ثابتة.
-  Future<ui.Image> _frame(
-    bool after, {
-    double scale = 1,
-    bool withLayers = true,
-  }) => renderSingle(
-    image: after ? _after! : _before!,
-    photo: after ? widget.record.after! : widget.record.before!,
-    size: _videoSize,
-    framing: _framing,
-    brand: _brand,
-    after: after,
-    label: _labels,
-    framed: _brandFrame,
-    overlay: withLayers ? _overlay : null,
-    frame: withLayers ? _frameSpec : null,
-    scale: scale,
-  );
-
-  Future<void> _refresh() async {
-    if (_before == null) return;
-    final gen = ++_generation;
-    final img = await _frame(_showAfter, scale: 0.35);
-    if (!mounted || gen != _generation) {
-      img.dispose();
-      return;
-    }
-    setState(() {
-      _preview?.dispose();
-      _preview = img;
-    });
-  }
-
-  void _update(VoidCallback change) {
-    setState(() {
-      change();
-      _player?.dispose();
-      _player = null;
-      _video = null;
-    });
-    _refresh();
-  }
-
-  Future<void> _setOverlay(String? path) async {
-    _overlayPath = path;
-    _overlay = path == null ? null : await loadImage(path);
-    _update(() {});
+  DesignSpec? _spec({Which? which, bool layers = true}) {
+    if (!_ready || _c.fills.isEmpty) return null;
+    final fill = _c.fills.first;
+    return DesignSpec(
+      brand: _brand,
+      size: _videoSize,
+      slots: [_slot],
+      fills: which == null ? _c.fills : [SlotFill(which, fill.framing)],
+      photos: _photos,
+      template: layers && _useTemplate ? _templateImg : null,
+      overlay: layers && !_useTemplate ? _overlay : null,
+      frame: layers ? _frameSpec : null,
+      labels: _labels,
+      labelsAtBottom: _useTemplate || _brandFrame,
+      marks: _c.marks,
+    );
   }
 
   Future<void> _make() async {
     setState(() => _working = true);
     final tmp = Store.instance.exportsDir.path;
     try {
-      final b = await _frame(false, withLayers: false);
-      final a = await _frame(true, withLayers: false);
+      final b = await renderDesign(_spec(which: Which.before, layers: false)!);
+      final a = await renderDesign(_spec(which: Which.after, layers: false)!);
       final bPath = await writePng(b, '$tmp/frame_before.png');
       final aPath = await writePng(a, '$tmp/frame_after.png');
       b.dispose();
       a.dispose();
       String? layerPath;
-      if (_overlay != null || _frameSpec != null) {
+      final top = _useTemplate ? _templateImg : _overlay;
+      if (top != null || _frameSpec != null) {
         final o = await renderOverlayLayer(
           _videoSize,
-          overlay: _overlay,
+          overlay: top,
           frame: _frameSpec,
         );
         layerPath = await writePng(o, '$tmp/frame_overlay.png');
@@ -172,116 +163,151 @@ class _VideoScreenState extends State<VideoScreen> {
     }
   }
 
+  void _setState(VoidCallback f) {
+    setState(f);
+    _invalidate();
+  }
+
   @override
   Widget build(BuildContext context) {
     final b = context.brand;
     final player = _player;
+    final screen = MediaQuery.of(context).size;
+    final width = math.min(screen.width - 32, screen.height * 0.44 * 9 / 16);
     return Scaffold(
       appBar: AppBar(title: const Text('فيديو التحوّل')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+      body: Column(
         children: [
-          Center(
-            child: Container(
-              height: 440,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: b.shadow,
-              ),
-              child: AspectRatio(
-                aspectRatio: 9 / 16,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(18),
-                  child: player != null
-                      ? VideoPlayer(player)
-                      : _preview == null
-                      ? Container(
-                          color: b.card,
-                          child: const Center(
-                            child: CircularProgressIndicator(),
-                          ),
-                        )
-                      : RawImage(image: _preview, fit: BoxFit.cover),
+          if (_working) const LinearProgressIndicator(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+            child: Center(
+              child: Container(
+                width: width,
+                height: width * 16 / 9,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: b.shadow,
                 ),
+                child: player != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: VideoPlayer(player),
+                      )
+                    : DesignCanvas(controller: _c, spec: _spec),
               ),
             ),
           ),
-          const SizedBox(height: 10),
           if (player == null)
-            Center(
-              child: SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment(value: false, label: Text('قبل')),
-                  ButtonSegment(value: true, label: Text('بعد')),
-                ],
-                selected: {_showAfter},
-                onSelectionChanged: (s) {
-                  _showAfter = s.first;
-                  _refresh();
-                  setState(() {});
-                },
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: DesignToolbar(
+                controller: _c,
+                twoPhotos: false,
+                onFit: _fit,
               ),
             ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilterChip(
-                label: Text('إطار ${b.name}'),
-                selected: _brandFrame,
-                onSelected: (v) => _update(() => _brandFrame = v),
-              ),
-              FilterChip(
-                label: const Text('كلمة قبل / بعد'),
-                selected: _labels,
-                onSelected: (v) => _update(() => _labels = v),
-              ),
-            ],
-          ),
-          FramingSliders(
-            framing: _framing,
-            onChanged: (f) => _update(() => _framing = f),
-          ),
-          OverlayPicker(selected: _overlayPath, onChanged: _setOverlay),
-          const SizedBox(height: 20),
-          if (_video == null)
-            FilledButton.icon(
-              onPressed: _preview == null || _working ? null : _make,
-              icon: const Icon(Icons.movie_filter),
-              label: Text(_working ? 'جاري الإنشاء...' : 'إنشاء الفيديو'),
-            )
-          else
-            Row(
+          const Divider(height: 16),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () =>
-                        saveToGallery(context, _video!, video: true),
-                    icon: const Icon(Icons.download),
-                    label: const Text('حفظ بالمعرض'),
+                if (player == null && _c.fills.isNotEmpty)
+                  Center(
+                    child: SegmentedButton<Which>(
+                      segments: [
+                        for (final w in Which.values)
+                          ButtonSegment(
+                            value: w,
+                            label: Text('معاينة ${w.label}'),
+                          ),
+                      ],
+                      selected: {_c.fills.first.which},
+                      onSelectionChanged: (s) {
+                        _c.fills.first.which = s.first;
+                        _c.changed();
+                      },
+                    ),
                   ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilterChip(
+                      label: Text('قالب ستوري ${b.name}'),
+                      selected: _useTemplate,
+                      onSelected: (v) => _setState(() {
+                        _useTemplate = v;
+                        _fit();
+                      }),
+                    ),
+                    if (!_useTemplate)
+                      FilterChip(
+                        label: Text('إطار ${b.name}'),
+                        selected: _brandFrame,
+                        onSelected: (v) => _setState(() => _brandFrame = v),
+                      ),
+                    FilterChip(
+                      label: const Text('كلمة قبل / بعد'),
+                      selected: _labels,
+                      onSelected: (v) => _setState(() => _labels = v),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: () => shareFile(_video!),
-                    icon: const Icon(Icons.share),
-                    label: const Text('مشاركة'),
+                if (!_useTemplate) ...[
+                  const SizedBox(height: 12),
+                  OverlayPicker(
+                    selected: _overlayPath,
+                    onChanged: (path) async {
+                      _overlayPath = path;
+                      _overlay = path == null ? null : await loadImage(path);
+                      _setState(() {});
+                    },
                   ),
+                ],
+                const SizedBox(height: 16),
+                if (_video == null)
+                  FilledButton.icon(
+                    onPressed: !_ready || _working ? null : _make,
+                    icon: const Icon(Icons.movie_filter),
+                    label: Text(_working ? 'جاري الإنشاء...' : 'إنشاء الفيديو'),
+                  )
+                else ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () =>
+                              saveToGallery(context, _video!, video: true),
+                          icon: const Icon(Icons.download),
+                          label: const Text('حفظ بالمعرض'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FilledButton.tonalIcon(
+                          onPressed: () => shareFile(_video!),
+                          icon: const Icon(Icons.share),
+                          label: const Text('مشاركة'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _setState(() {}),
+                    icon: const Icon(Icons.edit),
+                    label: const Text('رجوع للتعديل'),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Text(
+                  'فيديو عمودي ١٠٨٠×١٩٢٠، حوالي ٥ ثواني: يبدأ بـ"قبل" ويتحول تدريجياً لـ"بعد". التضبيب والرسم يطلعون بالفيديو كامل.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: b.muted, fontSize: 12),
                 ),
               ],
             ),
-          if (_working)
-            const Padding(
-              padding: EdgeInsets.only(top: 12),
-              child: LinearProgressIndicator(),
-            ),
-          const SizedBox(height: 12),
-          Text(
-            'فيديو عمودي ١٠٨٠×١٩٢٠، حوالي ٥ ثواني: يبدأ بـ"قبل" ويتحول تدريجياً لـ"بعد". جاهز للريلز والتيك توك.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: b.muted, fontSize: 12),
           ),
         ],
       ),

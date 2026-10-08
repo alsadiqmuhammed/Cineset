@@ -4,11 +4,14 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../brand.dart';
+import '../design.dart';
 import '../models.dart';
 import '../render.dart';
 import '../store.dart';
+import 'design_canvas.dart';
 import 'design_controls.dart';
 
+/// تصميم قبل وبعد: قوالب الهوية، تحريك الصور بالإصبع، وأدوات التضبيب والرسم.
 class ComposeScreen extends StatefulWidget {
   final Patient? patient;
   final CaseRecord record;
@@ -19,18 +22,20 @@ class ComposeScreen extends StatefulWidget {
 }
 
 class _ComposeScreenState extends State<ComposeScreen> {
-  ui.Image? _before, _after, _overlay, _logo, _preview;
+  final _c = DesignController();
+  final Map<Which, (ui.Image, Photo)> _photos = {};
+  ui.Image? _logo, _templateImg, _overlay;
+  late DesignTemplate? _template = templatesFor(_brand.section).first;
   PostFormat _format = PostFormat.portrait;
   Layout _layout = Layout.sideBySide;
-  late Framing _framing = Framing(
-    offsetY: Store.instance.brand.alignTarget == AlignTarget.eyes ? 0.08 : 0,
-  );
+  Which _single = Which.after;
   String? _overlayPath;
   bool _labels = true;
   bool _brandFrame = true;
   bool _doctorCaption = true;
   bool _exporting = false;
-  int _generation = 0;
+  bool _ready = false;
+  Size? _lastSize;
   String? _exported;
 
   Brand get _brand => Store.instance.brand;
@@ -38,27 +43,70 @@ class _ComposeScreenState extends State<ComposeScreen> {
   @override
   void initState() {
     super.initState();
+    _c.addListener(() => _exported = null);
     () async {
-      _before = await loadImage(widget.record.before!.path);
-      _after = await loadImage(widget.record.after!.path);
+      final r = widget.record;
+      _photos[Which.before] = (await loadImage(r.before!.path), r.before!);
+      _photos[Which.after] = (await loadImage(r.after!.path), r.after!);
       _logo = await loadAssetImage(_brand.logoReversed);
-      _fitZoom();
-      _refresh();
+      await _applyTemplate(_template);
     }();
   }
 
-  /// يختار تقريب يملأ الخليتين (ويبدأ من 1 على الأقل).
-  void _fitZoom() {
-    final (cell, _) = cellsFor(_format.size, _layout);
-    var z = 1.0;
-    for (final (img, photo) in [
-      (_before!, widget.record.before!),
-      (_after!, widget.record.after!),
-    ]) {
-      final size = Size(img.width.toDouble(), img.height.toDouble());
-      z = math.max(z, coverZoom(cell, size, photo, _framing.offsetY));
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  Size get _size => _template?.format.size ?? _format.size;
+
+  List<Rect> get _slots {
+    final t = _template;
+    if (t != null) return t.slots;
+    final (first, second) = cellsFor(_format.size, _layout);
+    // "قبل" باليمين (أو فوق).
+    return _layout == Layout.sideBySide ? [second, first] : [first, second];
+  }
+
+  Framing get _base =>
+      Framing(offsetY: _brand.alignTarget == AlignTarget.eyes ? -0.1 : 0);
+
+  /// يرجّع الصور لوضعها التلقائي (تملأ الشبابيك ومتطابقة).
+  void _fit() {
+    final slots = _slots;
+    final whiches = slots.length == 1 ? [_single] : [Which.before, Which.after];
+    final old = _c.fills;
+    final fills = <SlotFill>[];
+    for (var i = 0; i < slots.length; i++) {
+      final which = old.length == slots.length ? old[i].which : whiches[i];
+      final p = _photos[which]!;
+      fills.add(SlotFill(which, fitFraming(slots[i], p.$1, p.$2, _base)));
     }
-    _framing = Framing(zoom: z.clamp(0.4, 2.5), offsetY: _framing.offsetY);
+    // الصورتين بنفس التقريب حتى تبقى المطابقة.
+    if (fills.length == 2) {
+      final z = math.max(fills[0].framing.zoom, fills[1].framing.zoom);
+      for (final f in fills) {
+        f.framing = f.framing.copyWith(zoom: z);
+      }
+    }
+    _c.setFills(fills);
+  }
+
+  Future<void> _applyTemplate(DesignTemplate? t) async {
+    _template = t;
+    _templateImg = t == null ? null : await loadAssetImage(t.asset);
+    if (t != null) _labels = t.photos == 2;
+    _layoutChanged();
+    if (mounted) setState(() => _ready = true);
+  }
+
+  /// تغيّر المقاس أو الشبابيك: نعيد الضبط، والإضافات تنمسح إذا تغيّر المقاس.
+  void _layoutChanged() {
+    if (_lastSize != null && _lastSize != _size) _c.clearMarks();
+    _lastSize = _size;
+    _c.fills = [];
+    _fit();
   }
 
   String get _caption {
@@ -67,54 +115,31 @@ class _ComposeScreenState extends State<ComposeScreen> {
     return '${d.name} · ${_brand.name}';
   }
 
-  CompositeSpec _spec() => CompositeSpec(
-    before: _before!,
-    after: _after!,
-    beforePhoto: widget.record.before!,
-    afterPhoto: widget.record.after!,
-    brand: _brand,
-    format: _format,
-    layout: _layout,
-    framing: _framing,
-    overlay: _overlay,
-    frame: _brandFrame && _logo != null
-        ? BrandFrame(_brand, _logo!, _caption)
-        : null,
-    labels: _labels,
-  );
-
-  /// يعيد رسم المعاينة؛ إذا تغيّر شي أثناء الرسم يتجاهل النتيجة القديمة.
-  Future<void> _refresh() async {
-    if (_before == null || _after == null) return;
-    final gen = ++_generation;
-    _exported = null;
-    final img = await renderComposite(_spec(), scale: 0.4);
-    if (!mounted || gen != _generation) {
-      img.dispose();
-      return;
-    }
-    setState(() {
-      _preview?.dispose();
-      _preview = img;
-    });
-  }
-
-  void _update(VoidCallback change) {
-    setState(change);
-    _refresh();
-  }
-
-  Future<void> _setOverlay(String? path) async {
-    _overlayPath = path;
-    _overlay = path == null ? null : await loadImage(path);
-    _update(() {});
+  DesignSpec? _spec() {
+    if (!_ready || _c.fills.isEmpty) return null;
+    final templated = _template != null;
+    return DesignSpec(
+      brand: _brand,
+      size: _size,
+      slots: _slots,
+      fills: _c.fills,
+      photos: _photos,
+      template: _templateImg,
+      overlay: templated ? null : _overlay,
+      frame: !templated && _brandFrame && _logo != null
+          ? BrandFrame(_brand, _logo!, _caption)
+          : null,
+      labels: _labels,
+      labelsAtBottom: templated || _brandFrame,
+      marks: _c.marks,
+    );
   }
 
   Future<String> _export() async {
     if (_exported != null) return _exported!;
     setState(() => _exporting = true);
     try {
-      final img = await renderComposite(_spec());
+      final img = await renderDesign(_spec()!);
       final path = await writePng(img, Store.instance.exportPath('png'));
       img.dispose();
       return _exported = path;
@@ -123,131 +148,183 @@ class _ComposeScreenState extends State<ComposeScreen> {
     }
   }
 
+  void _swap() {
+    if (_c.fills.length != 2) return;
+    final a = _c.fills[0].which;
+    _c.fills[0].which = _c.fills[1].which;
+    _c.fills[1].which = a;
+    _fit();
+  }
+
   @override
   Widget build(BuildContext context) {
     final b = context.brand;
+    final templates = templatesFor(b.section);
+    final spec = _spec();
+    final screen = MediaQuery.of(context).size;
+    final ratio = _size.width / _size.height;
+    final width = math.min(screen.width - 32, screen.height * 0.44 * ratio);
     return Scaffold(
-      appBar: AppBar(title: const Text('تصميم قبل وبعد')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+      appBar: AppBar(
+        title: const Text('تصميم قبل وبعد'),
+        actions: [
+          IconButton(
+            tooltip: 'مشاركة',
+            onPressed: spec == null || _exporting
+                ? null
+                : () async => shareFile(await _export()),
+            icon: const Icon(Icons.share),
+          ),
+          IconButton(
+            tooltip: 'حفظ بالمعرض',
+            onPressed: spec == null || _exporting
+                ? null
+                : () async {
+                    final path = await _export();
+                    if (context.mounted) saveToGallery(context, path);
+                  },
+            icon: const Icon(Icons.download),
+          ),
+        ],
+      ),
+      body: Column(
         children: [
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: b.shadow,
-            ),
-            child: AspectRatio(
-              aspectRatio: _format.width / _format.height,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(18),
-                child: _preview == null
-                    ? Container(
-                        color: b.card,
-                        child: const Center(child: CircularProgressIndicator()),
-                      )
-                    : RawImage(image: _preview, fit: BoxFit.contain),
+          if (_exporting) const LinearProgressIndicator(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+            child: Center(
+              child: Container(
+                width: width,
+                height: width / ratio,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: b.shadow,
+                ),
+                child: DesignCanvas(controller: _c, spec: _spec),
               ),
             ),
           ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final f in PostFormat.values)
-                ChoiceChip(
-                  label: Text(f.label),
-                  selected: _format == f,
-                  onSelected: (_) => _update(() {
-                    _format = f;
-                    _fitZoom();
-                  }),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final l in Layout.values)
-                ChoiceChip(
-                  label: Text(l.label),
-                  selected: _layout == l,
-                  onSelected: (_) => _update(() {
-                    _layout = l;
-                    _fitZoom();
-                  }),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilterChip(
-                label: Text('إطار ${b.name}'),
-                selected: _brandFrame,
-                onSelected: (v) => _update(() => _brandFrame = v),
-              ),
-              FilterChip(
-                label: const Text('اسم الطبيب'),
-                selected: _doctorCaption,
-                onSelected: _brandFrame
-                    ? (v) => _update(() => _doctorCaption = v)
-                    : null,
-              ),
-              FilterChip(
-                label: const Text('كلمة قبل / بعد'),
-                selected: _labels,
-                onSelected: (v) => _update(() => _labels = v),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          FramingSliders(
-            framing: _framing,
-            onChanged: (f) => _update(() => _framing = f),
-          ),
-          OverlayPicker(selected: _overlayPath, onChanged: _setOverlay),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: _preview == null || _exporting
-                      ? null
-                      : () async {
-                          final path = await _export();
-                          if (context.mounted) saveToGallery(context, path);
-                        },
-                  icon: const Icon(Icons.download),
-                  label: const Text('حفظ بالمعرض'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: FilledButton.tonalIcon(
-                  onPressed: _preview == null || _exporting
-                      ? null
-                      : () async => shareFile(await _export()),
-                  icon: const Icon(Icons.share),
-                  label: const Text('مشاركة'),
-                ),
-              ),
-            ],
-          ),
-          if (_exporting)
-            const Padding(
-              padding: EdgeInsets.only(top: 12),
-              child: LinearProgressIndicator(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: DesignToolbar(
+              controller: _c,
+              twoPhotos: _slots.length == 2,
+              onFit: _fit,
             ),
-          const SizedBox(height: 12),
-          Text(
-            'النتائج تنشر بموافقة ${b.f('المراجع', 'المراجعة')}.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: b.muted, fontSize: 12),
+          ),
+          const Divider(height: 16),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              children: [
+                Text('القالب', style: TextStyle(color: b.muted)),
+                const SizedBox(height: 6),
+                SizedBox(
+                  height: 116,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      for (final t in templates)
+                        TemplateThumb(
+                          asset: t.asset,
+                          label: t.label,
+                          selected: _template?.id == t.id,
+                          onTap: () => _applyTemplate(t),
+                        ),
+                      TemplateThumb(
+                        asset: null,
+                        label: 'بدون قالب',
+                        selected: _template == null,
+                        onTap: () => _applyTemplate(null),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (_slots.length == 1)
+                      for (final w in Which.values)
+                        ChoiceChip(
+                          label: Text('صورة ${w.label}'),
+                          selected: _single == w,
+                          onSelected: (_) {
+                            setState(() => _single = w);
+                            _c.fills = [];
+                            _fit();
+                          },
+                        )
+                    else
+                      ActionChip(
+                        avatar: const Icon(Icons.swap_horiz, size: 18),
+                        label: const Text('بدّل مكان الصورتين'),
+                        onPressed: _swap,
+                      ),
+                    FilterChip(
+                      label: const Text('كلمة قبل / بعد'),
+                      selected: _labels,
+                      onSelected: (v) => setState(() => _labels = v),
+                    ),
+                  ],
+                ),
+                if (_template == null) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final f in PostFormat.values)
+                        ChoiceChip(
+                          label: Text(f.label),
+                          selected: _format == f,
+                          onSelected: (_) => setState(() {
+                            _format = f;
+                            _layoutChanged();
+                          }),
+                        ),
+                      for (final l in Layout.values)
+                        ChoiceChip(
+                          label: Text(l.label),
+                          selected: _layout == l,
+                          onSelected: (_) => setState(() {
+                            _layout = l;
+                            _layoutChanged();
+                          }),
+                        ),
+                      FilterChip(
+                        label: Text('إطار ${b.name}'),
+                        selected: _brandFrame,
+                        onSelected: (v) => setState(() => _brandFrame = v),
+                      ),
+                      FilterChip(
+                        label: const Text('اسم الطبيب'),
+                        selected: _doctorCaption,
+                        onSelected: _brandFrame
+                            ? (v) => setState(() => _doctorCaption = v)
+                            : null,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  OverlayPicker(
+                    selected: _overlayPath,
+                    onChanged: (path) async {
+                      _overlayPath = path;
+                      _overlay = path == null ? null : await loadImage(path);
+                      setState(() {});
+                    },
+                  ),
+                ],
+                const SizedBox(height: 16),
+                Text(
+                  'النتائج تنشر بموافقة ${b.f('المراجع', 'المراجعة')}. استخدم التضبيب لإخفاء أي تفصيل خاص.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: b.muted, fontSize: 12),
+                ),
+              ],
+            ),
           ),
         ],
       ),

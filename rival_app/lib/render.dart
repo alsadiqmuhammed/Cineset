@@ -28,9 +28,28 @@ enum Layout {
 }
 
 /// تكبير وإزاحة عمودية يتطبقون على الصورتين بنفس المقدار حتى يبقون متطابقين.
+///
+/// [offsetX] و[offsetY] نسبة من عرض/ارتفاع الخلية، و[rotation] بالراديان.
 class Framing {
-  final double zoom, offsetY;
-  const Framing({this.zoom = 1, this.offsetY = 0});
+  final double zoom, offsetX, offsetY, rotation;
+  const Framing({
+    this.zoom = 1,
+    this.offsetX = 0,
+    this.offsetY = 0,
+    this.rotation = 0,
+  });
+
+  Framing copyWith({
+    double? zoom,
+    double? offsetX,
+    double? offsetY,
+    double? rotation,
+  }) => Framing(
+    zoom: zoom ?? this.zoom,
+    offsetX: offsetX ?? this.offsetX,
+    offsetY: offsetY ?? this.offsetY,
+    rotation: rotation ?? this.rotation,
+  );
 }
 
 final _cache = <String, ui.Image>{};
@@ -69,7 +88,7 @@ class CellMapping {
 
   factory CellMapping.of(Rect cell, Size image, Photo p, Framing f) {
     final target = Offset(
-      cell.center.dx,
+      cell.left + cell.width * (0.5 + f.offsetX),
       cell.top + cell.height * (0.5 + f.offsetY),
     );
     if (!p.aligned) {
@@ -77,7 +96,7 @@ class CellMapping {
         target,
         Offset(image.width / 2, image.height / 2),
         math.max(cell.width / image.width, cell.height / image.height) * f.zoom,
-        0,
+        f.rotation,
       );
     }
     final left = p.a!.dx <= p.b!.dx ? p.a! : p.b!;
@@ -87,7 +106,7 @@ class CellMapping {
       target,
       (left + right) / 2,
       cell.width * 0.42 * f.zoom / math.max(d.distance, 1.0),
-      -math.atan2(d.dy, d.dx),
+      -math.atan2(d.dy, d.dx) + f.rotation,
     );
   }
 
@@ -99,8 +118,9 @@ class CellMapping {
 }
 
 /// أقل تقريب يخلّي الصورة تغطي الخلية كلها بدون حواف سودة.
-double coverZoom(Rect cell, Size image, Photo p, double offsetY) {
-  final m = CellMapping.of(cell, image, p, Framing(offsetY: offsetY));
+/// (الإزاحة والدوران من [f]؛ التقريب يتجاهله.)
+double coverZoom(Rect cell, Size image, Photo p, Framing f) {
+  final m = CellMapping.of(cell, image, p, f.copyWith(zoom: 1));
   final c = math.cos(-m.angle), s = math.sin(-m.angle);
   var zoom = 0.0;
   for (final corner in [
@@ -484,7 +504,7 @@ Future<ui.Image?> renderReportComposite(CaseRecord c, Brand brand) async {
         cell,
         Size(img.width.toDouble(), img.height.toDouble()),
         photo,
-        offsetY,
+        Framing(offsetY: offsetY),
       ),
     );
   }

@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../render.dart';
 import '../store.dart';
 import '../brand.dart';
 import 'common.dart';
@@ -69,59 +68,6 @@ class OverlayPicker extends StatelessWidget {
               style: TextStyle(color: b.muted, fontSize: 12),
             ),
           ),
-      ],
-    );
-  }
-}
-
-class FramingSliders extends StatelessWidget {
-  final Framing framing;
-  final ValueChanged<Framing> onChanged;
-  const FramingSliders({
-    super.key,
-    required this.framing,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final b = context.brand;
-    return Column(
-      children: [
-        Row(
-          children: [
-            SizedBox(
-              width: 70,
-              child: Text('التقريب', style: TextStyle(color: b.muted)),
-            ),
-            Expanded(
-              child: Slider(
-                value: framing.zoom,
-                min: 0.4,
-                max: 2.5,
-                onChanged: (v) =>
-                    onChanged(Framing(zoom: v, offsetY: framing.offsetY)),
-              ),
-            ),
-          ],
-        ),
-        Row(
-          children: [
-            SizedBox(
-              width: 70,
-              child: Text('الارتفاع', style: TextStyle(color: b.muted)),
-            ),
-            Expanded(
-              child: Slider(
-                value: framing.offsetY,
-                min: -0.35,
-                max: 0.35,
-                onChanged: (v) =>
-                    onChanged(Framing(zoom: framing.zoom, offsetY: v)),
-              ),
-            ),
-          ],
-        ),
       ],
     );
   }

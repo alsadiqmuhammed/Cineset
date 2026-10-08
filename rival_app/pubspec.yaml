@@ -68,6 +68,7 @@ flutter:
 
   assets:
     - assets/brand/
+    - assets/templates/
 
   fonts:
     - family: Almarai
