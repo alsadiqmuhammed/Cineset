@@ -6,7 +6,8 @@ services:
     environment:
       PORT: 3000
       NODE_ENV: production
-      CINESET_SECRET: change-this-in-production
+      # Required: put CINESET_SECRET=<openssl rand -hex 32> in a .env file next to this one.
+      CINESET_SECRET: ${CINESET_SECRET:?Set CINESET_SECRET in .env (generate with openssl rand -hex 32)}
       MAX_UPLOAD_MB: 500
     volumes:
       - ./data:/app/data

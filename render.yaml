@@ -1,8 +1,9 @@
 services:
   - type: web
     name: cineset
-    env: node
-    plan: free
+    runtime: node
+    # Persistent disks need a paid instance type; the free plan loses all data on every restart/deploy.
+    plan: starter
     buildCommand: npm install
     startCommand: node server.js
     envVars:
@@ -12,7 +13,11 @@ services:
         generateValue: true
       - key: MAX_UPLOAD_MB
         value: "500"
+      - key: DATA_DIR
+        value: /var/data/db
+      - key: UPLOADS_DIR
+        value: /var/data/uploads
     disk:
       name: cineset-data
-      mountPath: /app
+      mountPath: /var/data
       sizeGB: 1

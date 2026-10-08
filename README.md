@@ -63,14 +63,21 @@ Demo Client:
 - Email: client@cineset.local
 - Password: Demo1234
 
+Demo accounts are only created and accepted outside production (`NODE_ENV` not `production`). In production, sign up from the login page with "Create an account"; clients join through invite links. Set `CINESET_SEED_DEMO=true` to force demo accounts on.
+
 ## Production environment variables
 
 Start from `.env.example` and provide real values in your hosting provider. At minimum:
 
 - NODE_ENV=production
-- CINESET_SECRET=<long-random-secret>
+- CINESET_SECRET=<random, 32+ characters — `openssl rand -hex 32`>. The server refuses to start in production without it.
 - PORT=<provider-port>
 - MAX_UPLOAD_MB=<chosen-limit>
+- DATA_DIR / UPLOADS_DIR — where the JSON database and uploads are stored; point these at a persistent disk.
+
+With Docker Compose, put `CINESET_SECRET=...` in a `.env` file next to `compose.yaml`.
+
+On Render, `render.yaml` uses the `starter` plan because persistent disks are not available on the free plan, and stores data on a disk mounted at `/var/data`.
 
 The following integration placeholders are documented for the external services you said you will connect later:
 
