@@ -1,0 +1,9 @@
+{
+  "name": "cineset",
+  "version": "2.0.0",
+  "private": true,
+  "description": "CINESET production workspace and client portal",
+  "type": "commonjs",
+  "scripts": {"start":"node server.js","check":"node --check server.js && node --check public/app.js && node --check public/portfolio.js"},
+  "engines": {"node": ">=20"}
+}

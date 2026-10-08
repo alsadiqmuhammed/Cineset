@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: cineset
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CINESET_SECRET
+        generateValue: true
+      - key: MAX_UPLOAD_MB
+        value: "500"
+    disk:
+      name: cineset-data
+      mountPath: /app
+      sizeGB: 1

@@ -1,0 +1,14 @@
+services:
+  cineset:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      CINESET_SECRET: change-this-in-production
+      MAX_UPLOAD_MB: 500
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+    restart: unless-stopped
