@@ -47,3 +47,13 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+// كشف الوجه من Google Play Services بدل النسخة المدمجة: نفس الواجهة، والموديل
+// ينزل للتلفون مرة وحدة، فيصغر حجم التطبيق حوالي ١٣ ميغا.
+configurations.all {
+    exclude(group = "com.google.mlkit", module = "face-detection")
+}
+
+dependencies {
+    implementation("com.google.android.gms:play-services-mlkit-face-detection:17.1.0")
+}
