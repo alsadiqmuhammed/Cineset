@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -24,11 +26,20 @@ class _DoctorEditScreenState extends State<DoctorEditScreen> {
   late final _bio = TextEditingController(text: _d.bio);
   late final _services = TextEditingController(text: _d.services.join('، '));
   String? _photo;
+  late String? _signature = _d.signature;
+  late String? _stamp = _d.stamp;
 
   @override
   void initState() {
     super.initState();
     _photo = _d.photo;
+  }
+
+  /// PNG بدون ضغط حتى تبقى الشفافية.
+  Future<String?> _pickPng() async {
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (picked == null) return null;
+    return Store.instance.importPhoto(picked.path);
   }
 
   @override
@@ -57,15 +68,21 @@ class _DoctorEditScreenState extends State<DoctorEditScreen> {
       toast(context, 'اكتب الاسم');
       return;
     }
-    if (_d.photo != null && _d.photo != _photo) {
-      evictImage(_d.photo!);
+    for (final (old, now) in [
+      (_d.photo, _photo),
+      (_d.signature, _signature),
+      (_d.stamp, _stamp),
+    ]) {
+      if (old != null && old != now) evictImage(old);
     }
     _d
       ..name = name
       ..specialty = _specialty.text.trim()
       ..phone = _phone.text.trim()
       ..bio = _bio.text.trim()
-      ..photo = _photo;
+      ..photo = _photo
+      ..signature = _signature
+      ..stamp = _stamp;
     _d.services
       ..clear()
       ..addAll(
@@ -174,10 +191,104 @@ class _DoctorEditScreenState extends State<DoctorEditScreen> {
               hintText: 'الشهادة، سنين الخبرة، الاهتمامات...',
             ),
           ),
+          const SizedBox(height: 18),
+          Text(
+            'للتصاميم والتقارير',
+            style: TextStyle(color: b.muted, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _PngTile(
+                  label: 'التوقيع',
+                  hint: 'PNG شفاف',
+                  path: _signature,
+                  onPick: () async {
+                    final p = await _pickPng();
+                    if (p != null) setState(() => _signature = p);
+                  },
+                  onClear: () => setState(() => _signature = null),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _PngTile(
+                  label: 'صورة خاصة',
+                  hint: 'ختم أو شعار شخصي',
+                  path: _stamp,
+                  onPick: () async {
+                    final p = await _pickPng();
+                    if (p != null) setState(() => _stamp = p);
+                  },
+                  onClear: () => setState(() => _stamp = null),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 22),
           FilledButton(onPressed: _save, child: const Text('حفظ')),
         ],
       ),
+    );
+  }
+}
+
+/// خانة صورة PNG (توقيع أو ختم) على خلفية مربعات حتى تبين الشفافية.
+class _PngTile extends StatelessWidget {
+  final String label, hint;
+  final String? path;
+  final VoidCallback onPick, onClear;
+  const _PngTile({
+    required this.label,
+    required this.hint,
+    required this.path,
+    required this.onPick,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    return Column(
+      children: [
+        InkWell(
+          onTap: onPick,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            height: 96,
+            decoration: BoxDecoration(
+              color: b.card,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: b.line),
+            ),
+            clipBehavior: Clip.antiAlias,
+            padding: const EdgeInsets.all(8),
+            child: path == null
+                ? Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.add_photo_alternate_outlined,
+                        color: b.primary,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        label,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      Text(
+                        hint,
+                        style: TextStyle(color: b.muted, fontSize: 11),
+                      ),
+                    ],
+                  )
+                : Image.file(File(path!), fit: BoxFit.contain),
+          ),
+        ),
+        if (path != null)
+          TextButton(onPressed: onClear, child: Text('شيل $label')),
+      ],
     );
   }
 }

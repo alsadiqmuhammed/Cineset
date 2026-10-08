@@ -15,6 +15,7 @@ import '../video.dart';
 import 'common.dart';
 import 'design_canvas.dart';
 import 'design_controls.dart';
+import 'elements_bar.dart';
 
 const _videoSize = Size(1080, 1920);
 
@@ -59,6 +60,7 @@ class _VideoScreenState extends State<VideoScreen> {
       _templateImg = await loadAssetImage(_story.asset);
       _fit();
       if (mounted) setState(() => _ready = true);
+      _addDoctorName();
     }();
   }
 
@@ -95,12 +97,39 @@ class _VideoScreenState extends State<VideoScreen> {
 
   BrandFrame? get _frameSpec {
     if (_useTemplate || !_brandFrame || _logo == null) return null;
-    final d = Store.instance.doctor(widget.record.doctorId);
-    return BrandFrame(
-      _brand,
-      _logo!,
-      d == null ? _brand.name : '${d.name} · ${_brand.name}',
+    return BrandFrame(_brand, _logo!, '');
+  }
+
+  Doctor? get _doctor => Store.instance.doctor(widget.record.doctorId);
+
+  void _addDoctorName() {
+    final d = _doctor;
+    if (d == null || _c.elementOf(ElementRole.doctor) != null) return;
+    final e = doctorNameElement(d.name, _brand);
+    _placeDoctorName(e);
+    _c.addElement(e);
+    _c.select(null);
+  }
+
+  void _placeDoctorName(DesignElement e) {
+    final spec = _spec();
+    if (spec == null) return;
+    placeAvoiding(
+      e,
+      _videoSize,
+      nameSpots(
+        _videoSize,
+        [_slot],
+        templated: _useTemplate,
+        framed: _brandFrame,
+      ),
+      spec.labelRects,
     );
+  }
+
+  void _replaceName() {
+    final name = _c.elementOf(ElementRole.doctor);
+    if (name != null) _placeDoctorName(name);
   }
 
   DesignSpec? _spec({Which? which, bool layers = true}) {
@@ -118,6 +147,7 @@ class _VideoScreenState extends State<VideoScreen> {
       labels: _labels,
       labelsAtBottom: _useTemplate || _brandFrame,
       marks: _c.marks,
+      elements: layers ? _c.elements : const [],
     );
   }
 
@@ -148,11 +178,12 @@ class _VideoScreenState extends State<VideoScreen> {
       a.dispose();
       String? layerPath;
       final top = _useTemplate ? _templateImg : _overlay;
-      if (top != null || _frameSpec != null) {
+      if (top != null || _frameSpec != null || _c.elements.isNotEmpty) {
         final o = await renderOverlayLayer(
           _videoSize,
           overlay: top,
           frame: _frameSpec,
+          elements: _c.elements,
         );
         layerPath = await writePng(o, '$tmp/frame_overlay.png');
         o.dispose();
@@ -247,6 +278,20 @@ class _VideoScreenState extends State<VideoScreen> {
                 onFit: _fit,
               ),
             ),
+          if (player == null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+              child: ListenableBuilder(
+                listenable: _c,
+                builder: (context, _) => _c.tool != null
+                    ? const SizedBox.shrink()
+                    : ElementsBar(
+                        controller: _c,
+                        doctor: _doctor,
+                        onAddDoctorName: () => setState(_addDoctorName),
+                      ),
+              ),
+            ),
           const Divider(height: 16),
           Expanded(
             child: ListView(
@@ -280,18 +325,25 @@ class _VideoScreenState extends State<VideoScreen> {
                       onSelected: (v) => _setState(() {
                         _useTemplate = v;
                         _fit();
+                        _replaceName();
                       }),
                     ),
                     if (!_useTemplate)
                       FilterChip(
                         label: Text('إطار ${b.name}'),
                         selected: _brandFrame,
-                        onSelected: (v) => _setState(() => _brandFrame = v),
+                        onSelected: (v) => _setState(() {
+                          _brandFrame = v;
+                          _replaceName();
+                        }),
                       ),
                     FilterChip(
                       label: const Text('كلمة قبل / بعد'),
                       selected: _labels,
-                      onSelected: (v) => _setState(() => _labels = v),
+                      onSelected: (v) => _setState(() {
+                        _labels = v;
+                        _replaceName();
+                      }),
                     ),
                   ],
                 ),

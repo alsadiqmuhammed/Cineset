@@ -4,8 +4,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
 
 import 'brand.dart';
+import 'elements.dart';
 import 'models.dart';
 import 'render.dart';
+
+export 'elements.dart';
 
 /// قوالب الهوية الجاهزة: صورة PNG شفافة بشبابيك تبين منها الصور.
 /// مكان كل شباك مقاس من شفافية القالب نفسه.
@@ -153,6 +156,9 @@ class DesignSpec {
   final bool labelsAtBottom;
   final List<Mark> marks;
 
+  /// نصوص وصور تتحرك فوق كل شي (اسم الطبيب، توقيع...).
+  final List<DesignElement> elements;
+
   const DesignSpec({
     required this.brand,
     required this.size,
@@ -165,6 +171,7 @@ class DesignSpec {
     this.labels = true,
     this.labelsAtBottom = false,
     this.marks = const [],
+    this.elements = const [],
   });
 
   DesignSpec copyWith({
@@ -174,6 +181,7 @@ class DesignSpec {
     bool clearFrame = false,
     bool? labels,
     List<Mark>? marks,
+    List<DesignElement>? elements,
   }) => DesignSpec(
     brand: brand,
     size: size,
@@ -186,8 +194,54 @@ class DesignSpec {
     labels: labels ?? this.labels,
     labelsAtBottom: labelsAtBottom,
     marks: marks ?? this.marks,
+    elements: elements ?? this.elements,
   );
+
+  /// أماكن شارات قبل/بعد (حتى اسم الطبيب ما يركب عليها).
+  List<Rect> get labelRects => [
+    if (labels)
+      for (var i = 0; i < slots.length && i < fills.length; i++)
+        labelRect(
+          labelsAtBottom ? slots[i].deflate(size.width * 0.01) : slots[i],
+          fills[i].which.label,
+          size.width,
+          align: labelsAtBottom ? Alignment.bottomCenter : Alignment.topCenter,
+        ),
+  ];
 }
+
+/// أماكن مقترحة لاسم الطبيب (بالترتيب): تحت الشعار بالإطار، وبأعلى الصور
+/// بالقوالب، وإلا تحت أو فوق التصميم.
+List<Offset> nameSpots(
+  Size s,
+  List<Rect> slots, {
+  required bool templated,
+  required bool framed,
+}) {
+  double y(double px) => px / s.height;
+  final unit = math.min(s.width, s.height);
+  final all = slots.reduce((a, b) => a.expandToInclude(b));
+  final gap = s.width * 0.045;
+  return [
+    if (!templated && framed) Offset(0.5, y(unit * 0.23)),
+    // القوالب بيها كتابة تحت الشبابيك وفوقها، فالاسم بأعلى الصورة
+    // (شارات قبل/بعد تكون بأسفلها).
+    if (templated) Offset(0.5, y(all.top + gap * 1.3)),
+    Offset(0.5, 1 - y(gap * 1.4)),
+    Offset(0.5, y(gap * 1.4)),
+    Offset(0.5, y(all.center.dy)),
+  ];
+}
+
+/// عنصر اسم الطبيب بألوان الهوية، بمكان ما يركب على شارات قبل/بعد.
+DesignElement doctorNameElement(String name, Brand b) => DesignElement.text(
+  name,
+  role: ElementRole.doctor,
+  color: b.dark,
+  pill: true,
+  pillColor: b.accent,
+  size: 0.034,
+);
 
 /// يرسم التصميم كامل. نفس الدالة للمعاينة الحيّة وللتصدير.
 /// الترتيب: الخلفية ← الصور ← طبقة الإضافات (تضبيب، أشكال، رسم، ممحاة)
@@ -250,6 +304,7 @@ void paintDesign(Canvas canvas, DesignSpec s) {
       );
     }
   }
+  paintElements(canvas, s.size, s.elements);
 }
 
 void _paintMark(

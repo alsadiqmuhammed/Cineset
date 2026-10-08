@@ -10,6 +10,7 @@ import '../render.dart';
 import '../store.dart';
 import 'design_canvas.dart';
 import 'design_controls.dart';
+import 'elements_bar.dart';
 
 /// تصميم قبل وبعد: قوالب الهوية، تحريك الصور بالإصبع، وأدوات التضبيب والرسم.
 class ComposeScreen extends StatefulWidget {
@@ -32,7 +33,6 @@ class _ComposeScreenState extends State<ComposeScreen> {
   String? _overlayPath;
   bool _labels = true;
   bool _brandFrame = true;
-  bool _doctorCaption = true;
   bool _exporting = false;
   bool _ready = false;
   Size? _lastSize;
@@ -50,6 +50,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
       _photos[Which.after] = (await loadImage(r.after!.path), r.after!);
       _logo = await loadAssetImage(_brand.logoReversed);
       await _applyTemplate(_template);
+      _addDoctorName();
     }();
   }
 
@@ -107,12 +108,35 @@ class _ComposeScreenState extends State<ComposeScreen> {
     _lastSize = _size;
     _c.fills = [];
     _fit();
+    final name = _c.elementOf(ElementRole.doctor);
+    if (name != null) _placeDoctorName(name);
   }
 
-  String get _caption {
-    final d = Store.instance.doctor(widget.record.doctorId);
-    if (!_doctorCaption || d == null) return _brand.name;
-    return '${d.name} · ${_brand.name}';
+  Doctor? get _doctor => Store.instance.doctor(widget.record.doctorId);
+
+  void _addDoctorName() {
+    final d = _doctor;
+    if (d == null || _c.elementOf(ElementRole.doctor) != null) return;
+    final e = doctorNameElement(d.name, _brand);
+    _placeDoctorName(e);
+    _c.addElement(e);
+    _c.select(null);
+  }
+
+  void _placeDoctorName(DesignElement e) {
+    final spec = _spec();
+    if (spec == null) return;
+    placeAvoiding(
+      e,
+      _size,
+      nameSpots(
+        _size,
+        _slots,
+        templated: _template != null,
+        framed: _brandFrame,
+      ),
+      spec.labelRects,
+    );
   }
 
   DesignSpec? _spec() {
@@ -127,11 +151,12 @@ class _ComposeScreenState extends State<ComposeScreen> {
       template: _templateImg,
       overlay: templated ? null : _overlay,
       frame: !templated && _brandFrame && _logo != null
-          ? BrandFrame(_brand, _logo!, _caption)
+          ? BrandFrame(_brand, _logo!, '')
           : null,
       labels: _labels,
       labelsAtBottom: templated || _brandFrame,
       marks: _c.marks,
+      elements: _c.elements,
     );
   }
 
@@ -210,6 +235,19 @@ class _ComposeScreenState extends State<ComposeScreen> {
               controller: _c,
               twoPhotos: _slots.length == 2,
               onFit: _fit,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+            child: ListenableBuilder(
+              listenable: _c,
+              builder: (context, _) => _c.tool != null
+                  ? const SizedBox.shrink()
+                  : ElementsBar(
+                      controller: _c,
+                      doctor: _doctor,
+                      onAddDoctorName: () => setState(_addDoctorName),
+                    ),
             ),
           ),
           const Divider(height: 16),
@@ -296,14 +334,11 @@ class _ComposeScreenState extends State<ComposeScreen> {
                       FilterChip(
                         label: Text('إطار ${b.name}'),
                         selected: _brandFrame,
-                        onSelected: (v) => setState(() => _brandFrame = v),
-                      ),
-                      FilterChip(
-                        label: const Text('اسم الطبيب'),
-                        selected: _doctorCaption,
-                        onSelected: _brandFrame
-                            ? (v) => setState(() => _doctorCaption = v)
-                            : null,
+                        onSelected: (v) => setState(() {
+                          _brandFrame = v;
+                          final name = _c.elementOf(ElementRole.doctor);
+                          if (name != null) _placeDoctorName(name);
+                        }),
                       ),
                     ],
                   ),

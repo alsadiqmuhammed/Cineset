@@ -5,8 +5,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 
-import 'models.dart';
 import 'brand.dart';
+import 'elements.dart';
+import 'models.dart';
 
 enum PostFormat {
   portrait(1080, 1350, 'منشور 4:5'),
@@ -165,17 +166,26 @@ void paintPhoto(Canvas canvas, Rect cell, ui.Image img, Photo p, Framing f) {
   canvas.restore();
 }
 
-/// شارة "قبل" / "بعد". قبل: غامقة، بعد: بلون القسم.
-void paintLabel(
-  Canvas canvas,
+/// مكان شارة "قبل" / "بعد" (بدون رسم)، حتى العناصر الثانية تتجنبها.
+Rect labelRect(
   Rect cell,
   String text,
   double unit, {
-  required Color bg,
-  required Color fg,
   Alignment align = Alignment.topCenter,
 }) {
-  final para = _paragraph(text, unit * 0.04, fg, FontWeight.w800, cell.width);
+  final para = _paragraph(
+    text,
+    unit * 0.04,
+    const Color(0xFFFFFFFF),
+    FontWeight.w800,
+    cell.width,
+  );
+  final r = _labelRect(cell, para, unit, align);
+  para.dispose();
+  return r;
+}
+
+Rect _labelRect(Rect cell, ui.Paragraph para, double unit, Alignment align) {
   final w = para.longestLine + unit * 0.07;
   final h = para.height + unit * 0.022;
   final margin = unit * 0.05;
@@ -187,7 +197,22 @@ void paintLabel(
   final cy = align.y < 0
       ? cell.top + margin + h / 2
       : cell.bottom - margin - h / 2;
-  final pill = Rect.fromCenter(center: Offset(cx, cy), width: w, height: h);
+  return Rect.fromCenter(center: Offset(cx, cy), width: w, height: h);
+}
+
+/// شارة "قبل" / "بعد". قبل: غامقة، بعد: بلون القسم.
+void paintLabel(
+  Canvas canvas,
+  Rect cell,
+  String text,
+  double unit, {
+  required Color bg,
+  required Color fg,
+  Alignment align = Alignment.topCenter,
+}) {
+  final para = _paragraph(text, unit * 0.04, fg, FontWeight.w800, cell.width);
+  final pill = _labelRect(cell, para, unit, align);
+  final h = pill.height;
   canvas.drawRRect(
     RRect.fromRectAndRadius(pill, Radius.circular(h / 2)),
     Paint()..color = bg,
@@ -471,11 +496,13 @@ Future<ui.Image> renderOverlayLayer(
   Size size, {
   ui.Image? overlay,
   BrandFrame? frame,
+  List<DesignElement> elements = const [],
 }) {
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
   paintOverlay(canvas, size, overlay);
   if (frame != null) paintBrandFrame(canvas, size, frame);
+  paintElements(canvas, size, elements);
   return recorder.endRecording().toImage(
     size.width.round(),
     size.height.round(),

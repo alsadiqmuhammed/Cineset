@@ -15,11 +15,42 @@ class DesignController extends ChangeNotifier {
   final List<Mark> marks = [];
   final List<Mark> _redo = [];
 
+  /// نصوص وصور فوق التصميم، والمحدد حالياً.
+  final List<DesignElement> elements = [];
+  DesignElement? selected;
+
+  void addElement(DesignElement e) {
+    elements.add(e);
+    selected = e;
+    tool = null;
+    notifyListeners();
+  }
+
+  void removeElement(DesignElement e) {
+    elements.remove(e);
+    if (selected == e) selected = null;
+    notifyListeners();
+  }
+
+  void select(DesignElement? e) {
+    if (selected == e) return;
+    selected = e;
+    notifyListeners();
+  }
+
+  DesignElement? elementOf(ElementRole role) {
+    for (final e in elements) {
+      if (e.role == role) return e;
+    }
+    return null;
+  }
+
   bool get canUndo => marks.isNotEmpty;
   bool get canRedo => _redo.isNotEmpty;
 
   void setTool(MarkKind? t) {
     tool = t;
+    if (t != null) selected = null;
     notifyListeners();
   }
 
@@ -82,6 +113,8 @@ class _DesignCanvasState extends State<DesignCanvas> {
   List<Framing> _start = [];
   List<int> _moving = [];
   Mark? _current;
+  DesignElement? _elem;
+  (Offset, double, double) _elemStart = (Offset.zero, 1, 0);
 
   Offset _toDesign(Offset local) => local * _k;
 
@@ -106,6 +139,19 @@ class _DesignCanvasState extends State<DesignCanvas> {
     if (s == null) return;
     final p = _toDesign(d.localFocalPoint);
     if (c.tool == null) {
+      // العنصر (نص/صورة) يتحرك بإصبع، ويكبر ويتدور بإصبعين.
+      final e =
+          c.selected != null &&
+              c.selected!.hit(s.size, p, slop: s.size.width * 0.04)
+          ? c.selected
+          : elementAt(c.elements, s.size, p);
+      _elem = e;
+      c.select(e);
+      if (e != null) {
+        _elemStart = (e.center, e.size, e.rotation);
+        _startFocal = p;
+        return;
+      }
       final i = _slotAt(s, p);
       _moving = c.linked ? [for (var j = 0; j < c.fills.length; j++) j] : [i];
       _start = [for (final f in c.fills) f.framing];
@@ -123,6 +169,21 @@ class _DesignCanvasState extends State<DesignCanvas> {
     final s = widget.spec();
     if (s == null) return;
     final p = _toDesign(d.localFocalPoint);
+    if (c.tool == null && _elem != null) {
+      final e = _elem!;
+      final delta = p - _startFocal;
+      final (center, size, rotation) = _elemStart;
+      e.center = Offset(
+        (center.dx + delta.dx / s.size.width).clamp(0.0, 1.0),
+        (center.dy + delta.dy / s.size.height).clamp(0.0, 1.0),
+      );
+      e.size = e.isText
+          ? (size * d.scale).clamp(0.012, 0.25)
+          : (size * d.scale).clamp(0.04, 1.2);
+      e.rotation = rotation + d.rotation;
+      c.changed();
+      return;
+    }
     if (c.tool == null) {
       final delta = p - _startFocal;
       for (final i in _moving) {
@@ -154,6 +215,7 @@ class _DesignCanvasState extends State<DesignCanvas> {
   }
 
   void _onEnd(ScaleEndDetails d) {
+    _elem = null;
     final m = _current;
     _current = null;
     if (m == null) return;
@@ -209,6 +271,10 @@ class _DesignPainter extends CustomPainter {
     canvas.save();
     canvas.scale(size.width / s.size.width);
     paintDesign(canvas, s);
+    final sel = c.selected;
+    if (sel != null && s.elements.contains(sel)) {
+      sel.paintSelection(canvas, s.size, s.brand.accent);
+    }
     canvas.restore();
   }
 

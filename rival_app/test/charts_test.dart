@@ -81,6 +81,19 @@ void main() {
       );
     });
 
+    test('doctor signature and personal image are saved', () {
+      final d = Doctor(
+        id: 'd',
+        name: 'د. علي',
+        signature: '/x/sig.png',
+        stamp: '/x/stamp.png',
+      );
+      final back = Doctor.fromJson(d.toJson());
+      expect(back.signature, '/x/sig.png');
+      expect(back.stamp, '/x/stamp.png');
+      expect(Doctor.fromJson({'id': 'd', 'name': 'x'}).signature, isNull);
+    });
+
     test('tooth names and summary', () {
       expect(toothName(11), 'قاطع مركزي علوي أيمن');
       expect(toothName(36), 'رحى أولى سفلي أيسر');

@@ -215,6 +215,12 @@ class Doctor {
   String phone;
   String bio;
   String? photo;
+
+  /// توقيع الطبيب (PNG شفاف) للتصاميم والتقارير.
+  String? signature;
+
+  /// صورة خاصة بالطبيب (ختم أو شعار شخصي) تنحط على التصاميم وبالتقرير.
+  String? stamp;
   final List<String> services;
 
   Doctor({
@@ -224,6 +230,8 @@ class Doctor {
     this.phone = '',
     this.bio = '',
     this.photo,
+    this.signature,
+    this.stamp,
     List<String>? services,
   }) : services = services ?? [];
 
@@ -240,6 +248,8 @@ class Doctor {
     'phone': phone,
     'bio': bio,
     if (photo != null) 'photo': photo,
+    if (signature != null) 'signature': signature,
+    if (stamp != null) 'stamp': stamp,
     'services': services,
   };
 
@@ -250,6 +260,8 @@ class Doctor {
     phone: (j['phone'] as String?) ?? '',
     bio: (j['bio'] as String?) ?? '',
     photo: j['photo'] as String?,
+    signature: j['signature'] as String?,
+    stamp: j['stamp'] as String?,
     services: [for (final s in (j['services'] as List? ?? [])) s as String],
   );
 }

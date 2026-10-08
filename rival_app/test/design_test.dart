@@ -284,6 +284,189 @@ void main() {
     expect(c.marks, hasLength(1));
   });
 
+  group('elements', () {
+    test('text and PNG elements sit on top of the template', () async {
+      final photo = await solid(const Color(0xFF00FF00));
+      final sticker = await solid(const Color(0xFFFF0000));
+      final tpl = await solid(const Color(0xFF0000FF));
+      final spec = DesignSpec(
+        brand: dental,
+        size: const Size(400, 400),
+        slots: const [Rect.fromLTWH(0, 0, 400, 400)],
+        fills: [SlotFill(Which.before)],
+        photos: {Which.before: (photo, const Photo('x'))},
+        template: tpl,
+        labels: false,
+        elements: [
+          DesignElement.image(
+            sticker,
+            center: const Offset(0.25, 0.25),
+            size: 0.2,
+          ),
+        ],
+      );
+      final px = await pixels(await renderDesign(spec));
+      expect(at(px, 400, const Offset(100, 100)), const Color(0xFFFF0000));
+      expect(at(px, 400, const Offset(300, 300)), const Color(0xFF0000FF));
+      // الطبقة الثابتة للفيديو بيها العنصر، والباقي شفاف.
+      final layer = await pixels(
+        await renderOverlayLayer(const Size(400, 400), elements: spec.elements),
+      );
+      expect(at(layer, 400, const Offset(100, 100)), const Color(0xFFFF0000));
+      expect(at(layer, 400, const Offset(300, 300)).a, 0);
+    });
+
+    test('hit test follows position, size and rotation', () async {
+      final img = await solid(const Color(0xFFFF0000));
+      const s = Size(1000, 1000);
+      final e = DesignElement.image(
+        img,
+        center: const Offset(0.5, 0.5),
+        size: 0.4,
+      );
+      expect(e.hit(s, const Offset(500, 500)), isTrue);
+      expect(e.hit(s, const Offset(690, 500)), isTrue);
+      expect(e.hit(s, const Offset(720, 500)), isFalse);
+      e.size = 0.2;
+      expect(e.hit(s, const Offset(690, 500)), isFalse);
+      // مربع مدوّر ٤٥ درجة: الزاوية القديمة برا، والقطر جوّه.
+      e.size = 0.4;
+      e.rotation = 0.785398;
+      expect(e.hit(s, const Offset(690, 690)), isFalse);
+      expect(e.hit(s, const Offset(500, 770)), isTrue);
+      final t = DesignElement.text('د. علي', size: 0.05);
+      expect(t.boxIn(s).width, greaterThan(t.boxIn(s).height));
+      expect(elementAt([e, t], s, const Offset(500, 500)), t);
+    });
+
+    test('the doctor name never covers the before/after labels', () async {
+      final photo = await solid(const Color(0xFF00FF00));
+      Future<void> check(
+        String id,
+        Size size,
+        List<Rect> slots, {
+        required bool templated,
+        required bool framed,
+      }) async {
+        final spec = DesignSpec(
+          brand: beauty,
+          size: size,
+          slots: slots,
+          fills: [
+            SlotFill(Which.before),
+            if (slots.length > 1) SlotFill(Which.after),
+          ],
+          photos: {
+            Which.before: (photo, const Photo('b')),
+            Which.after: (photo, const Photo('a')),
+          },
+          labelsAtBottom: templated || framed,
+        );
+        final e = doctorNameElement('د. زهراء عبد الكريم الموسوي', beauty);
+        placeAvoiding(
+          e,
+          size,
+          nameSpots(size, slots, templated: templated, framed: framed),
+          spec.labelRects,
+        );
+        final r = e.rectIn(size);
+        expect((Offset.zero & size).contains(r.topLeft), isTrue, reason: id);
+        expect(
+          (Offset.zero & size).contains(r.bottomRight),
+          isTrue,
+          reason: id,
+        );
+        for (final l in spec.labelRects) {
+          expect(r.overlaps(l), isFalse, reason: id);
+        }
+      }
+
+      for (final t in [...dentalTemplates, ...beautyTemplates]) {
+        await check(
+          t.id,
+          t.format.size,
+          t.slots,
+          templated: true,
+          framed: false,
+        );
+      }
+      for (final f in PostFormat.values) {
+        for (final l in Layout.values) {
+          final (a, b) = cellsFor(f.size, l);
+          for (final framed in [true, false]) {
+            await check(
+              '${f.name} ${l.name} $framed',
+              f.size,
+              [b, a],
+              templated: false,
+              framed: framed,
+            );
+          }
+        }
+      }
+    });
+
+    testWidgets('dragging an element moves it, not the photos', (tester) async {
+      final c = DesignController()..fills = [SlotFill(Which.before)];
+      late DesignSpec spec;
+      late DesignElement e;
+      await tester.runAsync(() async {
+        final photo = await solid(const Color(0xFF00FF00));
+        e = DesignElement.image(
+          await solid(const Color(0xFFFF0000)),
+          center: const Offset(0.5, 0.5),
+          size: 0.3,
+        );
+        spec = DesignSpec(
+          brand: dental,
+          size: const Size(400, 400),
+          slots: const [Rect.fromLTWH(0, 0, 400, 400)],
+          fills: c.fills,
+          photos: {Which.before: (photo, const Photo('b'))},
+          elements: c.elements,
+        );
+      });
+      c.addElement(e);
+      c.select(null);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: dental.theme(),
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 400,
+                height: 400,
+                child: DesignCanvas(controller: c, spec: () => spec),
+              ),
+            ),
+          ),
+        ),
+      );
+      final canvas = find.byType(DesignCanvas);
+      await tester.timedDrag(
+        canvas,
+        const Offset(80, 40),
+        const Duration(milliseconds: 300),
+      );
+      await tester.pumpAndSettle();
+      expect(c.selected, e);
+      expect(e.center.dx, closeTo(0.7, 0.03));
+      expect(e.center.dy, closeTo(0.6, 0.03));
+      expect(c.fills.single.framing.offsetX, 0);
+      // السحب برا العنصر يحرّك الصورة ويلغي التحديد.
+      await tester.timedDragFrom(
+        tester.getTopLeft(canvas) + const Offset(40, 40),
+        const Offset(40, 0),
+        const Duration(milliseconds: 300),
+      );
+      await tester.pumpAndSettle();
+      expect(c.selected, isNull);
+      expect(c.fills.single.framing.offsetX, closeTo(0.1, 0.03));
+      c.removeElement(e);
+      expect(c.elements, isEmpty);
+    });
+  });
+
   test('fit fills each window without black bars', () async {
     final img = await solid(const Color(0xFF00FF00));
     for (final t in [...dentalTemplates, ...beautyTemplates]) {

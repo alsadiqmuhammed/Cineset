@@ -766,6 +766,14 @@ Future<File> _save(pw.Document doc, String name) async {
 Future<File> caseReport(Brand b, Patient p, CaseRecord c) async {
   final k = await _Kit.load(b);
   final body = await _caseBody(k, p, c);
+  final doctor = Store.instance.doctor(c.doctorId);
+  pw.MemoryImage? image(String? path) {
+    if (path == null || !File(path).existsSync()) return null;
+    return pw.MemoryImage(File(path).readAsBytesSync());
+  }
+
+  final signature = image(doctor?.signature);
+  final stamp = image(doctor?.stamp);
   final doc = k.doc('تقرير حالة - ${p.name}');
   doc.addPage(
     k.page(
@@ -776,25 +784,40 @@ Future<File> caseReport(Brand b, Patient p, CaseRecord c) async {
         pw.SizedBox(height: 28),
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
           children: [
             pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text('توقيع الطبيب', style: k.t(9, color: k.muted)),
-                pw.SizedBox(height: 18),
+                if (signature != null)
+                  pw.Container(
+                    width: 150,
+                    height: 54,
+                    alignment: pw.Alignment.center,
+                    child: pw.Image(signature, fit: pw.BoxFit.contain),
+                  )
+                else
+                  pw.SizedBox(height: 18),
                 pw.Container(width: 150, height: 0.8, color: k.line),
               ],
             ),
-            pw.Container(
-              width: 70,
-              height: 70,
-              alignment: pw.Alignment.center,
-              decoration: pw.BoxDecoration(
-                shape: pw.BoxShape.circle,
-                border: pw.Border.all(color: k.line, width: 0.8),
-              ),
-              child: pw.Text('الختم', style: k.t(9, color: k.muted)),
-            ),
+            stamp != null
+                ? pw.Container(
+                    width: 80,
+                    height: 80,
+                    child: pw.Image(stamp, fit: pw.BoxFit.contain),
+                  )
+                : pw.Container(
+                    width: 70,
+                    height: 70,
+                    alignment: pw.Alignment.center,
+                    decoration: pw.BoxDecoration(
+                      shape: pw.BoxShape.circle,
+                      border: pw.Border.all(color: k.line, width: 0.8),
+                    ),
+                    child: pw.Text('الختم', style: k.t(9, color: k.muted)),
+                  ),
           ],
         ),
       ],
