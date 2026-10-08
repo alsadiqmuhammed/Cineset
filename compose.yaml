@@ -6,9 +6,25 @@ services:
     environment:
       PORT: 3000
       NODE_ENV: production
+      MAX_UPLOAD_MB: 500
       # Required: put CINESET_SECRET=<openssl rand -hex 32> in a .env file next to this one.
       CINESET_SECRET: ${CINESET_SECRET:?Set CINESET_SECRET in .env (generate with openssl rand -hex 32)}
-      MAX_UPLOAD_MB: 500
+      # Optional integrations, read from .env (see .env.example). Empty = local fallback.
+      APP_BASE_URL: ${APP_BASE_URL:-}
+      DATABASE_URL: ${DATABASE_URL:-}
+      DATABASE_SSL: ${DATABASE_SSL:-}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-}
+      STORAGE_REGION: ${STORAGE_REGION:-auto}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads

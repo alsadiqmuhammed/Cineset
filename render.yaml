@@ -2,10 +2,12 @@ services:
   - type: web
     name: cineset
     runtime: node
-    # Persistent disks need a paid instance type; the free plan loses all data on every restart/deploy.
+    # Persistent disks need a paid instance type. Once DATABASE_URL and STORAGE_BUCKET are set,
+    # nothing is stored on the disk and you can remove it (and use any plan).
     plan: starter
-    buildCommand: npm install
+    buildCommand: npm ci --omit=dev
     startCommand: node server.js
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
@@ -17,6 +19,29 @@ services:
         value: /var/data/db
       - key: UPLOADS_DIR
         value: /var/data/uploads
+      # Values below are asked for when you create the Blueprint (see README).
+      - key: APP_BASE_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: STORAGE_ENDPOINT
+        sync: false
+      - key: STORAGE_BUCKET
+        sync: false
+      - key: STORAGE_ACCESS_KEY_ID
+        sync: false
+      - key: STORAGE_SECRET_ACCESS_KEY
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: AI_API_KEY
+        sync: false
     disk:
       name: cineset-data
       mountPath: /var/data

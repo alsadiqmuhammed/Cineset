@@ -6,6 +6,7 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 export NODE_ENV=development
 export CINESET_SECRET="${CINESET_SECRET:-dev-secret-change-me}"
+[ -d node_modules ] || npm install
 node server.js &
 PID=$!
 sleep 1
