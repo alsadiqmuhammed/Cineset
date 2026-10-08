@@ -1,0 +1,28 @@
+rules_version = '2';
+
+// قاعدة بيانات عيادة ريڤال: بس أعضاء العيادة (المضافين بمجموعة members
+// بإيميلهم) يقرون ويكتبون. أي حساب ثاني يترفض حتى لو سجل دخول.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isMember() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && exists(/databases/$(database)/documents/members/$(request.auth.token.email.lower()));
+    }
+
+    // كل عضو يگدر يشوف وثيقته بس (حتى التطبيق يتأكد إنه عضو).
+    // الإضافة والحذف من لوحة Firebase فقط.
+    match /members/{email} {
+      allow read: if request.auth != null
+        && request.auth.token.email.lower() == email;
+      allow write: if false;
+    }
+
+    // المراجعين والأطباء ومعلومات العيادة لكل قسم.
+    match /sections/{section}/{kind}/{id} {
+      allow read, write: if isMember()
+        && section in ['dental', 'beauty']
+        && kind in ['patients', 'doctors', 'meta'];
+    }
+  }
+}

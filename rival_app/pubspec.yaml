@@ -47,6 +47,10 @@ dependencies:
   file_picker: ^13.1.0
   local_auth: ^3.0.2
   open_filex: ^4.7.0
+  firebase_core: ^4.15.0
+  firebase_auth: ^6.7.0
+  cloud_firestore: ^6.10.0
+  firebase_storage: ^13.6.0
 
 # نسخة pdf مصلّحة للمسافات بالعربي (third_party/pdf/RIVAL_PATCH.md).
 dependency_overrides:

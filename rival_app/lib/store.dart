@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'brand.dart';
 import 'models.dart';
+import 'sync.dart';
 
 /// كل البيانات داخل مساحة التطبيق الخاصة، وكل قسم (أسنان / تجميل) بمجلد مستقل:
 /// ملف المراجعين، الأطباء، معلومات العيادة، الصور، والقوالب.
@@ -23,6 +24,12 @@ class Store extends ChangeNotifier {
   final List<String> overlays = [];
   ClinicInfo clinic = ClinicInfo();
   bool lockEnabled = false;
+
+  /// المزامنة ويا قاعدة البيانات الموحدة (إذا الحساب مسجل).
+  SyncEngine? sync;
+
+  /// اختار يشتغل بدون حساب (بيانات الجهاز بس).
+  bool cloudSkipped = false;
 
   Brand get brand => Brand.of(section);
   Directory get root => Directory('${base.path}/${section.name}');
@@ -42,12 +49,23 @@ class Store extends ChangeNotifier {
     if (await _settingsFile.exists()) {
       final s = jsonDecode(await _settingsFile.readAsString()) as Map;
       lockEnabled = s['lock'] == true;
+      cloudSkipped = s['cloudSkipped'] == true;
     }
   }
 
+  Future<void> _saveSettings() => _settingsFile.writeAsString(
+    jsonEncode({'lock': lockEnabled, 'cloudSkipped': cloudSkipped}),
+  );
+
   Future<void> setLock(bool v) async {
     lockEnabled = v;
-    await _settingsFile.writeAsString(jsonEncode({'lock': v}));
+    await _saveSettings();
+    notifyListeners();
+  }
+
+  Future<void> setCloudSkipped(bool v) async {
+    cloudSkipped = v;
+    await _saveSettings();
     notifyListeners();
   }
 
@@ -148,6 +166,7 @@ class Store extends ChangeNotifier {
   Future<void> save() async {
     await _write(_db, patients);
     notifyListeners();
+    sync?.schedulePush();
   }
 
   Future<void> saveAll() async {
@@ -155,7 +174,19 @@ class Store extends ChangeNotifier {
     await _write(_doctorsFile, doctors);
     await _write(_clinicFile, clinic);
     notifyListeners();
+    sync?.schedulePush();
   }
+
+  /// يحفظ اللي نزل من قاعدة البيانات (بدون ما يرجع يرفعه).
+  Future<void> persistFromSync() async {
+    await _write(_db, patients);
+    await _write(_doctorsFile, doctors);
+    await _write(_clinicFile, clinic);
+    notifyListeners();
+  }
+
+  /// يعيد رسم الشاشات (مثلاً بعد ما تنزل صورة).
+  void refresh() => notifyListeners();
 
   static String newId() => DateTime.now().microsecondsSinceEpoch.toString();
 

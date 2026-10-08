@@ -4,12 +4,15 @@ import 'package:local_auth/local_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../brand.dart';
+import '../cloud.dart';
 import '../main.dart';
 import '../store.dart';
+import '../sync.dart';
 import 'common.dart';
 import 'design_controls.dart';
 import 'doctor_profile_screen.dart';
 import 'doctors_screen.dart';
+import 'login_screen.dart';
 import 'overlays_screen.dart';
 import 'patient_screen.dart';
 
@@ -175,6 +178,7 @@ class MoreScreen extends StatelessWidget {
                 ),
               ),
               SectionHeader('البيانات والخصوصية'),
+              const _CloudCard(),
               _Tile(
                 Icons.cloud_upload_outlined,
                 'نسخة احتياطية (القسمين)',
@@ -412,6 +416,97 @@ class _ClinicSheetState extends State<_ClinicSheet> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// حساب العيادة وحالة المزامنة ويا قاعدة البيانات الموحدة.
+class _CloudCard extends StatelessWidget {
+  const _CloudCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    final cloud = Cloud.instance;
+    if (!cloud.available) return const SizedBox.shrink();
+    return ListenableBuilder(
+      listenable: cloud,
+      builder: (context, _) {
+        final user = cloud.user;
+        final status = cloud.status;
+        final color = switch (status) {
+          SyncStatus.synced => const Color(0xFF2E7D32),
+          SyncStatus.denied || SyncStatus.error => const Color(0xFFB3261E),
+          _ => b.muted,
+        };
+        return BrandCard(
+          padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+          child: Row(
+            children: [
+              Icon(
+                user == null ? Icons.cloud_off_outlined : Icons.cloud_done,
+                color: b.primary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      user == null
+                          ? 'قاعدة البيانات الموحدة'
+                          : (user.email ?? 'حساب العيادة'),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      user == null
+                          ? 'ادخل بحساب العيادة حتى تتزامن البيانات بين الأجهزة'
+                          : status.label,
+                      style: TextStyle(color: color, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              if (user == null)
+                TextButton(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (ctx) => LoginScreen(
+                        fromSettings: true,
+                        onDone: () async {
+                          Navigator.pop(ctx);
+                          await cloud.attach(Store.instance);
+                        },
+                      ),
+                    ),
+                  ),
+                  child: const Text('دخول'),
+                )
+              else
+                PopupMenuButton<String>(
+                  onSelected: (v) async {
+                    if (v == 'sync') await cloud.syncNow();
+                    if (v == 'out' && context.mounted) {
+                      final ok = await confirm(
+                        context,
+                        'تسجيل خروج؟',
+                        'البيانات تبقى على هذا الجهاز، بس توقف المزامنة.',
+                        action: 'خروج',
+                      );
+                      if (ok) await cloud.signOut();
+                    }
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'sync', child: Text('زامن الآن')),
+                    PopupMenuItem(value: 'out', child: Text('تسجيل خروج')),
+                  ],
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

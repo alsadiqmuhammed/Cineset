@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'brand.dart';
+import 'cloud.dart';
 import 'lock.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/login_screen.dart';
 import 'screens/more_screen.dart';
 import 'screens/patients_screen.dart';
 import 'screens/reports_screen.dart';
@@ -14,6 +16,7 @@ import 'store.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Store.instance.init();
+  await Cloud.instance.init();
   runApp(const RivalApp());
 }
 
@@ -43,6 +46,7 @@ class RivalAppState extends State<RivalApp> {
   Future<void> choose(Section s) async {
     setState(() => _opening = true);
     await Store.instance.open(s);
+    await Cloud.instance.attach(Store.instance);
     if (!mounted) return;
     setState(() {
       _section = s;
@@ -51,6 +55,12 @@ class RivalAppState extends State<RivalApp> {
   }
 
   void switchSection() => setState(() => _section = null);
+
+  /// أول مرة: الدخول لحساب العيادة، إلا إذا اختار يشتغل بدون حساب.
+  bool get _needsLogin =>
+      Cloud.instance.available &&
+      !Cloud.instance.signedIn &&
+      !Store.instance.cloudSkipped;
 
   @override
   Widget build(BuildContext context) {
@@ -68,7 +78,9 @@ class RivalAppState extends State<RivalApp> {
           statusBarColor: Colors.transparent,
         ),
         child: LockGate(
-          child: s == null
+          child: _needsLogin
+              ? LoginScreen(onDone: () => setState(() {}))
+              : s == null
               ? SectionPicker(onChosen: choose, busy: _opening)
               : HomeShell(key: ValueKey(s)),
         ),
