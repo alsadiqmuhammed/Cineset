@@ -632,10 +632,9 @@ packages:
   pdf:
     dependency: "direct main"
     description:
-      name: pdf
-      sha256: "6e40827f370d196e97c6611724d923a3d86c431ce8e2ce1e59edd03a67a1a6e6"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/pdf"
+      relative: true
+    source: path
     version: "3.13.1"
   petitparser:
     dependency: transitive

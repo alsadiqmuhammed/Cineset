@@ -48,6 +48,11 @@ dependencies:
   local_auth: ^3.0.2
   open_filex: ^4.7.0
 
+# نسخة pdf مصلّحة للمسافات بالعربي (third_party/pdf/RIVAL_PATCH.md).
+dependency_overrides:
+  pdf:
+    path: third_party/pdf
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
