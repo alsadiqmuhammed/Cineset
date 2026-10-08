@@ -4,6 +4,6 @@
   "private": true,
   "description": "CINESET production workspace and client portal",
   "type": "commonjs",
-  "scripts": {"start":"node server.js","check":"node --check server.js && node --check public/app.js && node --check public/portfolio.js"},
+  "scripts": {"start":"node server.js","check":"node --check server.js && node --check public/app.js && node --check public/portfolio.js && node --check public/invite.js"},
   "engines": {"node": ">=20"}
 }

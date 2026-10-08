@@ -4,7 +4,6 @@ ENV NODE_ENV=production
 COPY package.json ./
 COPY server.js ./
 COPY public ./public
-COPY data ./data
-RUN mkdir -p uploads
+RUN mkdir -p data uploads
 EXPOSE 3000
 CMD ["node","server.js"]
