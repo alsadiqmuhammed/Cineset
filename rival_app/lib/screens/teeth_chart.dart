@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../brand.dart';
 import '../charts.dart';
 
-/// خريطة الأسنان على شكل القوسين بترقيم FDI، مثل ما يشوفها الطبيب مقابل المراجع.
+/// خريطة الأسنان مرسومة (الفكين واللثة)، مثل ما يشوفها الطبيب مقابل المراجع. بدون أرقام.
 class TeethChart extends StatefulWidget {
   final Set<int> selected;
   final ValueChanged<int> onToggle;
@@ -40,26 +40,35 @@ class _TeethChartState extends State<TeethChart> {
           ),
         ),
         const SizedBox(height: 8),
-        AspectRatio(
-          aspectRatio: 1,
-          child: LayoutBuilder(
-            builder: (context, box) {
-              final size = box.biggest;
-              return GestureDetector(
-                onTapUp: (d) {
-                  final t = toothAt(size, d.localPosition, primary: _primary);
-                  if (t != null) widget.onToggle(t);
+        Center(
+          child: SizedBox(
+            width: 320,
+            child: AspectRatio(
+              aspectRatio: 1 / teethAspect,
+              child: LayoutBuilder(
+                builder: (context, box) {
+                  final size = box.biggest;
+                  return GestureDetector(
+                    onTapUp: (d) {
+                      final t = toothAt(
+                        size,
+                        d.localPosition,
+                        primary: _primary,
+                      );
+                      if (t != null) widget.onToggle(t);
+                    },
+                    child: CustomPaint(
+                      size: size,
+                      painter: ToothChartPainter(
+                        selected: widget.selected,
+                        primary: _primary,
+                        brand: b,
+                      ),
+                    ),
+                  );
                 },
-                child: CustomPaint(
-                  size: size,
-                  painter: ToothChartPainter(
-                    selected: widget.selected,
-                    primary: _primary,
-                    brand: b,
-                  ),
-                ),
-              );
-            },
+              ),
+            ),
           ),
         ),
         if (selected.isNotEmpty) ...[

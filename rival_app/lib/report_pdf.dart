@@ -579,7 +579,7 @@ Future<Uint8List?> _chart(CaseRecord c, Brand b) async {
         brand: b,
         fontScale: 1.1,
       ),
-      const Size(700, 700),
+      const Size(600, 600 * teethAspect),
     );
   }
   if (c.areas.isEmpty) return null;
@@ -692,9 +692,7 @@ Future<List<pw.Widget>> _caseBody(
     if (chart != null)
       _keep(
         children: [
-          k.section(
-            b.teethChart ? 'خريطة الأسنان (FDI)' : 'خريطة الأجزاء المعالجة',
-          ),
+          k.section(b.teethChart ? 'خريطة الأسنان' : 'خريطة الأجزاء المعالجة'),
           pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
@@ -702,11 +700,10 @@ Future<List<pw.Widget>> _caseBody(
                 flex: 5,
                 child: b.teethChart
                     ? k.table(
-                        ['السن', 'الاسم'],
+                        ['الأسنان المعالجة'],
                         [
-                          for (final t in c.teeth) ['$t', toothName(t)],
+                          for (final t in c.teeth) [toothName(t)],
                         ],
-                        flex: [1, 4],
                       )
                     : k.table(
                         ['المنطقة', 'الكمية'],

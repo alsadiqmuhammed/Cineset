@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/material.dart' show Colors;
 import 'package:flutter/rendering.dart';
 
 import 'brand.dart';
@@ -113,52 +114,113 @@ double _toothWidth(int fdi) {
 class ToothSpot {
   final int fdi;
   final Offset center;
-  final double angle, width, height;
+
+  /// اتجاه القوس عند السن (بالراديان).
+  final double angle;
+
+  /// العرض على طول القوس، والعمق باتجاه الحنك.
+  final double width, height;
   const ToothSpot(this.fdi, this.center, this.angle, this.width, this.height);
 }
 
-/// أماكن الأسنان على قوسين (علوي وسفلي) بمقاس [size] (العرض : الارتفاع = ١ : ١).
+/// الخريطة أطول من عرضها: الفك العلوي فوق والسفلي جوّه، كل واحد بمكانه.
+const teethAspect = 1.25;
+
+/// منحنى القوس (بيزيه) بإحداثيات نسبة من العرض. العلوي ∩ (القواطع فوق)،
+/// والسفلي ∪ (القواطع جوّه).
+List<Offset> _archControl({required bool upper, required bool primary}) {
+  final pts = primary
+      ? const [
+          Offset(0.26, 0.5),
+          Offset(0.22, 0.1),
+          Offset(0.78, 0.1),
+          Offset(0.74, 0.5),
+        ]
+      : const [
+          Offset(0.18, 0.55),
+          Offset(0.12, 0.02),
+          Offset(0.88, 0.02),
+          Offset(0.82, 0.55),
+        ];
+  if (upper) return pts;
+  return [for (final p in pts) Offset(p.dx, teethAspect - p.dy)];
+}
+
+Offset _bezier(List<Offset> c, double t) {
+  final u = 1 - t;
+  return c[0] * (u * u * u) +
+      c[1] * (3 * u * u * t) +
+      c[2] * (3 * u * t * t) +
+      c[3] * (t * t * t);
+}
+
+/// نقاط القوس متساوية المسافة تقريباً: (النقطة، الاتجاه) لكل جزء من الطول.
+class _Arch {
+  final List<Offset> pts = [];
+  final List<double> len = [0];
+  _Arch(List<Offset> control, double w) {
+    for (var i = 0; i <= 240; i++) {
+      pts.add(_bezier(control, i / 240) * w);
+      if (i > 0) len.add(len.last + (pts[i] - pts[i - 1]).distance);
+    }
+  }
+  double get total => len.last;
+
+  (Offset, double) at(double s) {
+    var i = 1;
+    while (i < len.length - 1 && len[i] < s) {
+      i++;
+    }
+    final a = pts[i - 1], b = pts[i];
+    final f = ((s - len[i - 1]) / (len[i] - len[i - 1])).clamp(0.0, 1.0);
+    final d = b - a;
+    return (Offset.lerp(a, b, f)!, math.atan2(d.dy, d.dx));
+  }
+
+  Path path() {
+    final p = Path()..moveTo(pts.first.dx, pts.first.dy);
+    for (final q in pts.skip(1)) {
+      p.lineTo(q.dx, q.dy);
+    }
+    return p;
+  }
+}
+
+/// العمق (باتجاه الحنك) نسبة من وحدة القوس، حسب نوع السن.
+double _toothDepth(int fdi) {
+  final n = fdi % 10;
+  if (isPrimaryTooth(fdi)) return n <= 2 ? 0.62 : (n == 3 ? 0.78 : 0.95);
+  return const {
+    1: 0.62,
+    2: 0.6,
+    3: 0.8,
+    4: 0.92,
+    5: 0.92,
+    6: 1.08,
+    7: 1.02,
+    8: 0.95,
+  }[n]!;
+}
+
+/// أماكن الأسنان بمقاس [size] (العرض : الارتفاع = ١ : ١.٢٥).
 List<ToothSpot> toothLayout(Size size, {required bool primary}) {
   final w = size.width;
   final spots = <ToothSpot>[];
   void arch(List<int> teeth, bool upper) {
-    final cx = 0.5 * w;
-    // القوسين متقابلين (العلوي ∩ والسفلي ∪) وبيناتهم مسافة حتى ما تتداخل الأضراس.
-    final cy = (upper ? 0.42 : 0.58) * size.height;
-    final rx = (primary ? 0.33 : 0.42) * w;
-    final ry = (primary ? 0.27 : 0.35) * size.height;
-    const a0 = math.pi, a1 = 0.0;
+    final a = _Arch(_archControl(upper: upper, primary: primary), w);
     final total = teeth.fold(0.0, (s, t) => s + _toothWidth(t));
-    // طول القوس التقريبي حتى نحسب حجم السن.
-    var arc = 0.0;
-    var prev = Offset(cx + rx * math.cos(a0), cy);
-    for (var k = 1; k <= 60; k++) {
-      final a = a0 + (a1 - a0) * k / 60;
-      final p = Offset(
-        cx + rx * math.cos(a),
-        cy + (upper ? -1 : 1) * ry * math.sin(a),
-      );
-      arc += (p - prev).distance;
-      prev = p;
-    }
-    final unit = arc / total;
+    final unit = a.total / total;
     var acc = 0.0;
     for (final t in teeth) {
-      final mid = (acc + _toothWidth(t) / 2) / total;
+      final (c, angle) = a.at((acc + _toothWidth(t) / 2) * unit);
       acc += _toothWidth(t);
-      final a = a0 + (a1 - a0) * mid;
-      final sign = upper ? -1.0 : 1.0;
-      final c = Offset(cx + rx * math.cos(a), cy + sign * ry * math.sin(a));
-      // اتجاه المماس حتى يدور السن ويه القوس.
-      final tangent = Offset(-rx * math.sin(a), sign * ry * math.cos(a));
       spots.add(
         ToothSpot(
           t,
           c,
-          math.atan2(tangent.dy, tangent.dx),
-          unit * _toothWidth(t) * 0.86,
-          unit *
-              (t % 10 >= 6 || (isPrimaryTooth(t) && t % 10 >= 4) ? 1.0 : 1.15),
+          angle,
+          unit * _toothWidth(t) * 0.97,
+          unit * _toothDepth(t) * 1.18,
         ),
       );
     }
@@ -179,94 +241,175 @@ int? toothAt(Size size, Offset p, {required bool primary}) {
       best = s;
     }
   }
-  if (best == null || dist > math.max(best.width, best.height) * 0.75) {
+  if (best == null || dist > math.max(best.width, best.height) * 0.8) {
     return null;
   }
   return best.fdi;
 }
 
+const _gum = Color(0xFFE59AA2);
+const _gumEdge = Color(0xFFC9727D);
+const _palate = Color(0xFFF2B9BE);
+const _enamel = Color(0xFFFFFDF8);
+const _enamelShade = Color(0xFFE9E1D3);
+const _enamelLine = Color(0xFFC9BDAA);
+
+/// خريطة الأسنان مرسومة مثل الرسوم الطبية: لثة وحنك، وأسنان من فوق
+/// (القواطع رفيعة، والأضراس بخطوط تيجانها). بدون أرقام.
 class ToothChartPainter extends CustomPainter {
   final Set<int> selected;
   final bool primary;
   final Brand brand;
   final double fontScale;
+  final bool labels;
   ToothChartPainter({
     required this.selected,
     required this.primary,
     required this.brand,
     this.fontScale = 1,
+    this.labels = true,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
+    final w = size.width;
     final spots = toothLayout(size, primary: primary);
-    final unit = size.width;
-    _text(
-      canvas,
-      'الفك العلوي',
-      Offset(size.width / 2, size.height * 0.3),
-      unit * 0.032 * fontScale,
-      brand.muted,
-    );
+    final unit = spots.first.width / _toothWidth(spots.first.fdi) / 0.97;
+    for (final upper in [true, false]) {
+      final a = _Arch(_archControl(upper: upper, primary: primary), w);
+      final path = a.path();
+      // الحنك (أو مكان اللسان) داخل القوس.
+      final inner = Path.from(path)..close();
+      canvas.drawPath(
+        inner,
+        Paint()
+          ..shader = ui.Gradient.radial(
+            Offset(w / 2, (upper ? 0.32 : teethAspect - 0.32) * w),
+            w * 0.4,
+            [_palate.withValues(alpha: 0.95), _gum.withValues(alpha: 0.9)],
+          ),
+      );
+      // اللثة: شريط عريض على طول القوس.
+      canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = unit * 1.62
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..color = _gumEdge,
+      );
+      canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = unit * 1.48
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..color = _gum,
+      );
+    }
+    for (final s in spots) {
+      _tooth(canvas, s, selected.contains(s.fdi), w);
+    }
+    if (!labels) return;
+    final f = w * 0.034 * fontScale;
+    _text(canvas, 'الفك العلوي', Offset(w / 2, w * 0.33), f, brand.muted);
     _text(
       canvas,
       'الفك السفلي',
-      Offset(size.width / 2, size.height * 0.72),
-      unit * 0.032 * fontScale,
+      Offset(w / 2, w * (teethAspect - 0.33)),
+      f,
       brand.muted,
     );
     _text(
       canvas,
       'يمين المراجع',
-      Offset(size.width * 0.12, size.height * 0.94),
-      unit * 0.03 * fontScale,
+      Offset(w * 0.37, w * teethAspect / 2),
+      f * 0.85,
       brand.muted,
     );
     _text(
       canvas,
       'يسار المراجع',
-      Offset(size.width * 0.88, size.height * 0.94),
-      unit * 0.03 * fontScale,
+      Offset(w * 0.63, w * teethAspect / 2),
+      f * 0.85,
       brand.muted,
     );
-    // خط المنتصف.
-    canvas.drawLine(
-      Offset(size.width / 2, size.height * 0.06),
-      Offset(size.width / 2, size.height * 0.98),
-      Paint()
-        ..color = brand.line
-        ..strokeWidth = 1,
+  }
+
+  void _tooth(Canvas canvas, ToothSpot s, bool on, double w) {
+    final n = s.fdi % 10;
+    final molar = isPrimaryTooth(s.fdi) ? n >= 4 : n >= 6;
+    final premolar = !isPrimaryTooth(s.fdi) && (n == 4 || n == 5);
+    final canine = n == 3;
+    canvas.save();
+    canvas.translate(s.center.dx, s.center.dy);
+    canvas.rotate(s.angle);
+    final rect = Rect.fromCenter(
+      center: Offset.zero,
+      width: s.width,
+      height: s.height,
     );
-    for (final s in spots) {
-      final on = selected.contains(s.fdi);
-      canvas.save();
-      canvas.translate(s.center.dx, s.center.dy);
-      canvas.rotate(s.angle);
-      final r = RRect.fromRectAndRadius(
-        Rect.fromCenter(center: Offset.zero, width: s.width, height: s.height),
-        Radius.circular(s.width * (s.fdi % 10 >= 4 ? 0.3 : 0.45)),
+    final shape = molar
+        ? RRect.fromRectAndRadius(rect, Radius.circular(s.width * 0.34))
+        : premolar
+        ? RRect.fromRectAndRadius(rect, Radius.circular(s.width * 0.45))
+        : RRect.fromRectAndRadius(
+            rect,
+            Radius.elliptical(s.width * 0.5, s.height * 0.5),
+          );
+    // ظل خفيف تحت السن.
+    canvas.drawRRect(
+      shape.shift(Offset(0, s.height * 0.06)),
+      Paint()
+        ..color = const Color(0x33000000)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, s.width * 0.06),
+    );
+    final top = on ? Color.lerp(brand.primary, Colors.white, 0.25)! : _enamel;
+    final bottom = on ? brand.primaryDeep : _enamelShade;
+    canvas.drawRRect(
+      shape,
+      Paint()
+        ..shader = ui.Gradient.radial(
+          Offset(-s.width * 0.15, -s.height * 0.2),
+          s.width * 0.75,
+          [top, bottom],
+        ),
+    );
+    canvas.drawRRect(
+      shape,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(0.8, w * 0.0025)
+        ..color = on ? brand.primaryDeep : _enamelLine,
+    );
+    // خطوط التاج: صليب للأضراس، خط للضواحك، نقطة للناب.
+    final groove = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = math.max(0.7, w * 0.0022)
+      ..color = on ? Colors.white.withValues(alpha: 0.7) : _enamelLine;
+    if (molar) {
+      final gx = s.width * 0.22, gy = s.height * 0.22;
+      canvas.drawPath(
+        Path()
+          ..moveTo(-gx, -gy * 0.3)
+          ..quadraticBezierTo(0, gy * 0.3, gx, -gy * 0.3)
+          ..moveTo(-gx * 0.2, -gy)
+          ..quadraticBezierTo(gx * 0.25, 0, -gx * 0.1, gy),
+        groove,
       );
-      canvas.drawRRect(
-        r,
-        Paint()..color = on ? brand.primary : const Color(0xFFFFFFFF),
+    } else if (premolar) {
+      canvas.drawLine(
+        Offset(-s.width * 0.22, 0),
+        Offset(s.width * 0.22, 0),
+        groove,
       );
-      canvas.drawRRect(
-        r,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = math.max(1, unit * 0.003)
-          ..color = on ? brand.primaryDeep : brand.line.withValues(alpha: 1),
-      );
-      canvas.restore();
-      _text(
-        canvas,
-        '${s.fdi}',
-        s.center,
-        s.width * 0.36 * fontScale,
-        on ? const Color(0xFFFFFFFF) : brand.muted,
-        bold: true,
-      );
+    } else if (canine) {
+      canvas.drawCircle(Offset.zero, s.width * 0.06, groove);
     }
+    canvas.restore();
   }
 
   @override
@@ -291,50 +434,50 @@ class FaceArea {
 
 /// مناطق الوجه. يمين المراجعة على يسار الشاشة.
 const faceAreas = [
-  FaceArea('forehead', 'الجبهة', Offset(0.5, 0.25), 0.2, 0.07),
-  FaceArea('glabella', 'بين الحاجبين', Offset(0.5, 0.375), 0.045, 0.035),
-  FaceArea('temple_r', 'الصدغ الأيمن', Offset(0.215, 0.36), 0.042, 0.065),
-  FaceArea('temple_l', 'الصدغ الأيسر', Offset(0.785, 0.36), 0.042, 0.065),
-  FaceArea('crow_r', 'جانب العين الأيمن', Offset(0.265, 0.475), 0.028, 0.04),
-  FaceArea('crow_l', 'جانب العين الأيسر', Offset(0.735, 0.475), 0.028, 0.04),
-  FaceArea('undereye_r', 'تحت العين اليمنى', Offset(0.36, 0.53), 0.075, 0.027),
-  FaceArea('undereye_l', 'تحت العين اليسرى', Offset(0.64, 0.53), 0.075, 0.027),
-  FaceArea('nose', 'الأنف', Offset(0.5, 0.57), 0.042, 0.085),
-  FaceArea('cheek_r', 'الخد الأيمن', Offset(0.29, 0.62), 0.075, 0.065),
-  FaceArea('cheek_l', 'الخد الأيسر', Offset(0.71, 0.62), 0.075, 0.065),
+  FaceArea('forehead', 'الجبهة', Offset(0.5, 0.28), 0.17, 0.06),
+  FaceArea('glabella', 'بين الحاجبين', Offset(0.5, 0.405), 0.035, 0.03),
+  FaceArea('temple_r', 'الصدغ الأيمن', Offset(0.24, 0.38), 0.035, 0.055),
+  FaceArea('temple_l', 'الصدغ الأيسر', Offset(0.76, 0.38), 0.035, 0.055),
+  FaceArea('crow_r', 'جانب العين الأيمن', Offset(0.27, 0.46), 0.026, 0.035),
+  FaceArea('crow_l', 'جانب العين الأيسر', Offset(0.73, 0.46), 0.026, 0.035),
+  FaceArea('undereye_r', 'تحت العين اليمنى', Offset(0.37, 0.52), 0.055, 0.022),
+  FaceArea('undereye_l', 'تحت العين اليسرى', Offset(0.63, 0.52), 0.055, 0.022),
+  FaceArea('nose', 'الأنف', Offset(0.5, 0.56), 0.035, 0.065),
+  FaceArea('cheek_r', 'الخد الأيمن', Offset(0.315, 0.605), 0.06, 0.055),
+  FaceArea('cheek_l', 'الخد الأيسر', Offset(0.685, 0.605), 0.06, 0.055),
   FaceArea(
     'nasolabial_r',
     'الخط الأنفي الأيمن',
-    Offset(0.405, 0.675),
-    0.025,
-    0.05,
+    Offset(0.415, 0.655),
+    0.02,
+    0.042,
   ),
   FaceArea(
     'nasolabial_l',
     'الخط الأنفي الأيسر',
-    Offset(0.595, 0.675),
-    0.025,
-    0.05,
+    Offset(0.585, 0.655),
+    0.02,
+    0.042,
   ),
-  FaceArea('lips', 'الشفايف', Offset(0.5, 0.74), 0.085, 0.036),
+  FaceArea('lips', 'الشفايف', Offset(0.5, 0.722), 0.08, 0.032),
   FaceArea(
     'marionette_r',
     'خط الماريونيت الأيمن',
-    Offset(0.405, 0.815),
-    0.025,
-    0.04,
+    Offset(0.42, 0.795),
+    0.02,
+    0.035,
   ),
   FaceArea(
     'marionette_l',
     'خط الماريونيت الأيسر',
-    Offset(0.595, 0.815),
-    0.025,
-    0.04,
+    Offset(0.58, 0.795),
+    0.02,
+    0.035,
   ),
-  FaceArea('chin', 'الذقن', Offset(0.5, 0.9), 0.07, 0.04),
-  FaceArea('jaw_r', 'خط الفك الأيمن', Offset(0.25, 0.8), 0.045, 0.08),
-  FaceArea('jaw_l', 'خط الفك الأيسر', Offset(0.75, 0.8), 0.045, 0.08),
-  FaceArea('neck', 'الرقبة', Offset(0.5, 1.13), 0.12, 0.075),
+  FaceArea('chin', 'الذقن', Offset(0.5, 0.885), 0.055, 0.035),
+  FaceArea('jaw_r', 'خط الفك الأيمن', Offset(0.275, 0.765), 0.035, 0.065),
+  FaceArea('jaw_l', 'خط الفك الأيسر', Offset(0.725, 0.765), 0.035, 0.065),
+  FaceArea('neck', 'الرقبة', Offset(0.5, 1.04), 0.07, 0.045),
 ];
 
 /// الوجه أطول من عرضه: الارتفاع = ١.٢٥ × العرض.
@@ -358,25 +501,29 @@ String areaLabel(String id) {
 
 String? faceAreaAt(Size size, Offset p) {
   FaceArea? best;
-  var bestArea = double.infinity;
+  var bestScore = double.infinity;
   for (final a in faceAreas) {
     final r = a.rect(size);
-    final d = Offset(
-      (p.dx - r.center.dx) / (r.width / 2),
-      (p.dy - r.center.dy) / (r.height / 2),
-    );
-    // داخل البيضة (مع هامش بسيط حتى اللمس يكون سهل).
-    if (d.distanceSquared <= 1.35) {
-      final area = r.width * r.height;
-      if (area < bestArea) {
-        bestArea = area;
-        best = a;
-      }
+    // المناطق الصغيرة إلها مساحة لمس أكبر من رسمتها حتى يسهل اختيارها.
+    final hx = math.max(r.width / 2, size.width * 0.04);
+    final hy = math.max(r.height / 2, size.width * 0.04);
+    final d = Offset((p.dx - r.center.dx) / hx, (p.dy - r.center.dy) / hy);
+    final score = d.distanceSquared;
+    if (score <= 1.2 && score * hx * hy < bestScore) {
+      bestScore = score * hx * hy;
+      best = a;
     }
   }
   return best?.id;
 }
 
+const _skinTop = Color(0xFFFFF8F5);
+const _skinBottom = Color(0xFFF7E4DE);
+const _lipTop = Color(0xFFEDB0BA);
+const _lipBottom = Color(0xFFD98597);
+
+/// خريطة الوجه بأسلوب ناعم وأنثوي: شعر وحواجب ورموش وشفايف، ومناطق الحقن
+/// نقاط صغيرة تتوهج بلون القسم لما تتأشر.
 class FaceMapPainter extends CustomPainter {
   final Set<String> selected;
   final Map<String, String> doses;
@@ -393,188 +540,324 @@ class FaceMapPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     Offset p(double x, double y) => Offset(x * w, y * w);
+    Path cubic(Path path, List<double> v) =>
+        path
+          ..cubicTo(v[0] * w, v[1] * w, v[2] * w, v[3] * w, v[4] * w, v[5] * w);
+    final ink = brand.highlight.withValues(alpha: 0.55);
     final line = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(1.2, w * 0.005)
+      ..strokeWidth = math.max(1, w * 0.0042)
       ..strokeCap = StrokeCap.round
-      ..color = brand.accent;
-    final soft = Paint()
+      ..strokeJoin = StrokeJoin.round
+      ..color = ink;
+    final thin = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(1, w * 0.0035)
+      ..strokeWidth = math.max(0.8, w * 0.003)
       ..strokeCap = StrokeCap.round
-      ..color = brand.accent.withValues(alpha: 0.75);
+      ..color = ink;
+
+    // الشعر (ورا الوجه).
+    final hair = Path()..moveTo(p(0.5, 0.05).dx, p(0.5, 0.05).dy);
+    cubic(hair, [0.84, 0.05, 0.93, 0.32, 0.9, 0.6]);
+    cubic(hair, [0.88, 0.84, 0.94, 0.98, 0.97, 1.13]);
+    hair.lineTo(p(0.03, 1.13).dx, p(0.03, 1.13).dy);
+    cubic(hair, [0.06, 0.98, 0.12, 0.84, 0.1, 0.6]);
+    cubic(hair, [0.07, 0.32, 0.16, 0.05, 0.5, 0.05]);
+    hair.close();
+    canvas.drawPath(
+      hair,
+      Paint()
+        ..shader = ui.Gradient.linear(p(0.5, 0.05), p(0.5, 1.13), [
+          brand.accent.withValues(alpha: 0.42),
+          brand.accent.withValues(alpha: 0.12),
+        ]),
+    );
+    canvas.drawPath(hair, thin..color = brand.accent.withValues(alpha: 0.7));
+    thin.color = ink;
 
     // الرقبة والكتفين.
-    canvas.drawPath(
-      Path()
-        ..moveTo(p(0.38, 0.95).dx, p(0.38, 0.95).dy)
-        ..quadraticBezierTo(
-          p(0.37, 1.08).dx,
-          p(0.36, 1.13).dy,
-          p(0.2, 1.2).dx,
-          p(0.2, 1.2).dy,
-        )
-        ..moveTo(p(0.62, 0.95).dx, p(0.62, 0.95).dy)
-        ..quadraticBezierTo(
-          p(0.63, 1.08).dx,
-          p(0.64, 1.13).dy,
-          p(0.8, 1.2).dx,
-          p(0.8, 1.2).dy,
-        ),
-      line,
+    final neck = Path()..moveTo(p(0.42, 0.9).dx, p(0.42, 0.9).dy);
+    neck.lineTo(p(0.415, 1.06).dx, p(0.415, 1.06).dy);
+    cubic(neck, [0.36, 1.1, 0.24, 1.12, 0.16, 1.2]);
+    neck.lineTo(p(0.84, 1.2).dx, p(0.84, 1.2).dy);
+    cubic(neck, [0.76, 1.12, 0.64, 1.1, 0.585, 1.06]);
+    neck.lineTo(p(0.58, 0.9).dx, p(0.58, 0.9).dy);
+    neck.close();
+    canvas.drawPath(neck, Paint()..color = _skinBottom);
+    canvas.drawLine(p(0.42, 0.92), p(0.415, 1.06), line);
+    canvas.drawLine(p(0.58, 0.92), p(0.585, 1.06), line);
+
+    // الوجه.
+    final face = Path()..moveTo(p(0.5, 0.17).dx, p(0.5, 0.17).dy);
+    cubic(face, [0.67, 0.17, 0.79, 0.28, 0.795, 0.46]);
+    cubic(face, [0.8, 0.66, 0.7, 0.84, 0.57, 0.935]);
+    face.quadraticBezierTo(
+      p(0.5, 0.98).dx,
+      p(0.5, 0.98).dy,
+      p(0.43, 0.935).dx,
+      p(0.43, 0.935).dy,
     );
-    // الوجه: جبهة عريضة وذقن ناعم.
-    final face = Path()
-      ..moveTo(p(0.5, 0.1).dx, p(0.5, 0.1).dy)
-      ..cubicTo(
-        p(0.73, 0.1).dx,
-        p(0.73, 0.1).dy,
-        p(0.84, 0.25).dx,
-        p(0.84, 0.25).dy,
-        p(0.83, 0.47).dx,
-        p(0.83, 0.47).dy,
-      )
-      ..cubicTo(
-        p(0.83, 0.68).dx,
-        p(0.83, 0.68).dy,
-        p(0.74, 0.86).dx,
-        p(0.74, 0.86).dy,
-        p(0.62, 0.93).dx,
-        p(0.62, 0.93).dy,
-      )
-      ..quadraticBezierTo(
-        p(0.5, 0.99).dx,
-        p(0.5, 0.99).dy,
-        p(0.38, 0.93).dx,
-        p(0.38, 0.93).dy,
-      )
-      ..cubicTo(
-        p(0.26, 0.86).dx,
-        p(0.26, 0.86).dy,
-        p(0.17, 0.68).dx,
-        p(0.17, 0.68).dy,
-        p(0.17, 0.47).dx,
-        p(0.17, 0.47).dy,
-      )
-      ..cubicTo(
-        p(0.16, 0.25).dx,
-        p(0.16, 0.25).dy,
-        p(0.27, 0.1).dx,
-        p(0.27, 0.1).dy,
-        p(0.5, 0.1).dx,
-        p(0.5, 0.1).dy,
-      )
-      ..close();
-    canvas.drawPath(face, Paint()..color = const Color(0xFFFFFFFF));
+    cubic(face, [0.3, 0.84, 0.2, 0.66, 0.205, 0.46]);
+    cubic(face, [0.21, 0.28, 0.33, 0.17, 0.5, 0.17]);
+    face.close();
+    canvas.drawPath(
+      face,
+      Paint()
+        ..shader = ui.Gradient.linear(p(0.5, 0.17), p(0.5, 0.98), [
+          _skinTop,
+          _skinBottom,
+        ]),
+    );
     canvas.drawPath(face, line);
-    // الأذنين.
-    for (final s in [-1.0, 1.0]) {
-      final x = 0.5 + s * 0.335;
-      canvas.drawArc(
-        Rect.fromCenter(center: p(x, 0.52), width: w * 0.07, height: w * 0.16),
-        s < 0 ? math.pi * 0.5 : -math.pi * 0.5,
-        math.pi,
-        false,
-        soft,
+    // خط الشعر الأمامي (غرّة ناعمة).
+    final fringe = Path()..moveTo(p(0.24, 0.36).dx, p(0.24, 0.36).dy);
+    cubic(fringe, [0.27, 0.2, 0.42, 0.15, 0.56, 0.18]);
+    cubic(fringe, [0.68, 0.2, 0.76, 0.27, 0.775, 0.37]);
+    canvas.drawPath(fringe, thin..color = brand.accent.withValues(alpha: 0.75));
+    thin.color = ink;
+
+    // حمرة الخدود.
+    for (final x in [0.33, 0.67]) {
+      canvas.drawCircle(
+        p(x, 0.62),
+        w * 0.075,
+        Paint()
+          ..shader = ui.Gradient.radial(p(x, 0.62), w * 0.075, [
+            _lipBottom.withValues(alpha: 0.16),
+            _lipBottom.withValues(alpha: 0),
+          ]),
       );
     }
-    // الحواجب والعيون.
-    for (final s in [-1.0, 1.0]) {
-      final cx = 0.5 + s * 0.14;
+
+    for (final sgn in [-1.0, 1.0]) {
+      final cx = 0.5 + sgn * 0.135;
+      // الحاجب: شكل مدبب ناعم.
+      final brow = Path()
+        ..moveTo(p(0.5 + sgn * 0.055, 0.418).dx, p(0, 0.418).dy);
+      brow.quadraticBezierTo(
+        p(0.5 + sgn * 0.13, 0.37).dx,
+        p(0, 0.37).dy,
+        p(0.5 + sgn * 0.225, 0.405).dx,
+        p(0, 0.405).dy,
+      );
+      brow.quadraticBezierTo(
+        p(0.5 + sgn * 0.13, 0.388).dx,
+        p(0, 0.388).dy,
+        p(0.5 + sgn * 0.055, 0.428).dx,
+        p(0, 0.428).dy,
+      );
+      brow.close();
+      canvas.drawPath(
+        brow,
+        Paint()..color = brand.highlight.withValues(alpha: 0.5),
+      );
+      // العين.
+      final eye = Path()
+        ..moveTo(p(cx - sgn * 0.062, 0.472).dx, p(0, 0.472).dy)
+        ..quadraticBezierTo(
+          p(cx, 0.438).dx,
+          p(0, 0.438).dy,
+          p(cx + sgn * 0.065, 0.465).dx,
+          p(0, 0.465).dy,
+        )
+        ..quadraticBezierTo(
+          p(cx, 0.497).dx,
+          p(0, 0.497).dy,
+          p(cx - sgn * 0.062, 0.472).dx,
+          p(0, 0.472).dy,
+        );
+      canvas.drawPath(eye, Paint()..color = Colors.white);
+      canvas.save();
+      canvas.clipPath(eye);
+      canvas.drawCircle(
+        p(cx, 0.468),
+        w * 0.02,
+        Paint()..color = brand.highlight.withValues(alpha: 0.75),
+      );
+      canvas.drawCircle(p(cx, 0.468), w * 0.009, Paint()..color = brand.dark);
+      canvas.drawCircle(
+        p(cx + 0.007, 0.462),
+        w * 0.004,
+        Paint()..color = Colors.white,
+      );
+      canvas.restore();
+      canvas.drawPath(eye, thin);
+      // خط الرموش العلوي وكم رمشة بالطرف.
       canvas.drawPath(
         Path()
-          ..moveTo(p(cx - s * 0.08, 0.425).dx, p(cx, 0.425).dy)
+          ..moveTo(p(cx - sgn * 0.062, 0.472).dx, p(0, 0.472).dy)
           ..quadraticBezierTo(
-            p(cx, 0.385).dx,
-            p(cx, 0.385).dy,
-            p(cx + s * 0.08, 0.42).dx,
-            p(cx, 0.42).dy,
+            p(cx, 0.436).dx,
+            p(0, 0.436).dy,
+            p(cx + sgn * 0.067, 0.463).dx,
+            p(0, 0.463).dy,
           ),
-        line,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.max(1.4, w * 0.0075)
+          ..strokeCap = StrokeCap.round
+          ..color = brand.dark.withValues(alpha: 0.7),
       );
-      final eye = Path()
-        ..moveTo(p(cx - 0.065, 0.48).dx, p(cx, 0.48).dy)
-        ..quadraticBezierTo(
-          p(cx, 0.445).dx,
-          p(cx, 0.445).dy,
-          p(cx + 0.065, 0.48).dx,
-          p(cx, 0.48).dy,
-        )
-        ..quadraticBezierTo(
-          p(cx, 0.505).dx,
-          p(cx, 0.505).dy,
-          p(cx - 0.065, 0.48).dx,
-          p(cx, 0.48).dy,
+      for (var k = 0; k < 3; k++) {
+        final base = p(cx + sgn * (0.035 + k * 0.014), 0.447 + k * 0.005);
+        canvas.drawLine(
+          base,
+          base + Offset(sgn * w * 0.016, -w * 0.014),
+          thin..color = brand.dark.withValues(alpha: 0.55),
         );
-      canvas.drawPath(eye, soft);
-      canvas.drawCircle(p(cx, 0.477), w * 0.012, Paint()..color = brand.accent);
+      }
+      thin.color = ink;
     }
+
     // الأنف.
     canvas.drawPath(
       Path()
-        ..moveTo(p(0.485, 0.47).dx, p(0.485, 0.47).dy)
+        ..moveTo(p(0.488, 0.49).dx, p(0.488, 0.49).dy)
         ..quadraticBezierTo(
-          p(0.47, 0.58).dx,
-          p(0.47, 0.58).dy,
-          p(0.455, 0.615).dx,
-          p(0.455, 0.615).dy,
-        )
-        ..quadraticBezierTo(
-          p(0.5, 0.64).dx,
-          p(0.5, 0.64).dy,
-          p(0.545, 0.615).dx,
-          p(0.545, 0.615).dy,
+          p(0.476, 0.565).dx,
+          p(0.476, 0.565).dy,
+          p(0.47, 0.598).dx,
+          p(0.47, 0.598).dy,
         ),
-      soft,
+      thin,
     );
-    // الشفايف.
     canvas.drawPath(
       Path()
-        ..moveTo(p(0.42, 0.74).dx, p(0.42, 0.74).dy)
+        ..moveTo(p(0.462, 0.61).dx, p(0.462, 0.61).dy)
         ..quadraticBezierTo(
-          p(0.46, 0.715).dx,
-          p(0.46, 0.715).dy,
-          p(0.5, 0.728).dx,
-          p(0.5, 0.728).dy,
-        )
-        ..quadraticBezierTo(
-          p(0.54, 0.715).dx,
-          p(0.54, 0.715).dy,
-          p(0.58, 0.74).dx,
-          p(0.58, 0.74).dy,
-        )
-        ..quadraticBezierTo(
-          p(0.5, 0.775).dx,
-          p(0.5, 0.775).dy,
-          p(0.42, 0.74).dx,
-          p(0.42, 0.74).dy,
+          p(0.5, 0.632).dx,
+          p(0.5, 0.632).dy,
+          p(0.538, 0.61).dx,
+          p(0.538, 0.61).dy,
         ),
-      soft,
+      thin,
     );
 
+    // الشفايف.
+    final upperLip = Path()
+      ..moveTo(p(0.43, 0.718).dx, p(0.43, 0.718).dy)
+      ..quadraticBezierTo(
+        p(0.465, 0.69).dx,
+        p(0.465, 0.69).dy,
+        p(0.5, 0.702).dx,
+        p(0.5, 0.702).dy,
+      )
+      ..quadraticBezierTo(
+        p(0.535, 0.69).dx,
+        p(0.535, 0.69).dy,
+        p(0.57, 0.718).dx,
+        p(0.57, 0.718).dy,
+      )
+      ..quadraticBezierTo(
+        p(0.5, 0.726).dx,
+        p(0.5, 0.726).dy,
+        p(0.43, 0.718).dx,
+        p(0.43, 0.718).dy,
+      );
+    final lowerLip = Path()
+      ..moveTo(p(0.43, 0.718).dx, p(0.43, 0.718).dy)
+      ..quadraticBezierTo(
+        p(0.5, 0.772).dx,
+        p(0.5, 0.772).dy,
+        p(0.57, 0.718).dx,
+        p(0.57, 0.718).dy,
+      )
+      ..quadraticBezierTo(
+        p(0.5, 0.726).dx,
+        p(0.5, 0.726).dy,
+        p(0.43, 0.718).dx,
+        p(0.43, 0.718).dy,
+      );
+    final lipPaint = Paint()
+      ..shader = ui.Gradient.linear(p(0.5, 0.69), p(0.5, 0.772), [
+        _lipTop,
+        _lipBottom,
+      ]);
+    canvas.drawPath(upperLip, lipPaint);
+    canvas.drawPath(lowerLip, lipPaint);
+    canvas.drawPath(upperLip, thin..color = _lipBottom);
+    canvas.drawPath(lowerLip, thin);
+    canvas.drawCircle(
+      p(0.48, 0.742),
+      w * 0.006,
+      Paint()..color = Colors.white.withValues(alpha: 0.6),
+    );
+    thin.color = ink;
+
+    // المناطق: نقاط ناعمة، وتوهج لما تتأشر.
     for (final a in faceAreas) {
       final r = a.rect(size);
       final on = selected.contains(a.id);
-      canvas.drawOval(
-        r,
+      if (on) {
+        canvas.save();
+        canvas.translate(r.center.dx, r.center.dy);
+        canvas.scale(1, r.height / r.width);
+        canvas.drawCircle(
+          Offset.zero,
+          r.width * 0.62,
+          Paint()
+            ..shader = ui.Gradient.radial(
+              Offset.zero,
+              r.width * 0.62,
+              [
+                brand.primary.withValues(alpha: 0.42),
+                brand.highlight.withValues(alpha: 0.18),
+                brand.highlight.withValues(alpha: 0),
+              ],
+              [0, 0.6, 1],
+            ),
+        );
+        canvas.restore();
+      }
+      final dot = w * (on ? 0.016 : 0.012);
+      canvas.drawCircle(
+        r.center,
+        dot,
         Paint()
-          ..color = on
-              ? brand.primary.withValues(alpha: 0.42)
-              : brand.highlight.withValues(alpha: 0.07),
+          ..color = on ? brand.primary : Colors.white.withValues(alpha: 0.85),
       );
-      canvas.drawOval(
-        r,
+      canvas.drawCircle(
+        r.center,
+        dot,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = math.max(1, w * (on ? 0.005 : 0.0025))
-          ..color = on
-              ? brand.primary
-              : brand.highlight.withValues(alpha: 0.35),
+          ..strokeWidth = math.max(1, w * (on ? 0.005 : 0.003))
+          ..color = on ? Colors.white : brand.highlight.withValues(alpha: 0.55),
       );
+      if (!on) {
+        canvas.drawCircle(
+          r.center,
+          w * 0.0035,
+          Paint()..color = brand.highlight.withValues(alpha: 0.6),
+        );
+      }
       if (on && showDoses && (doses[a.id] ?? '').isNotEmpty) {
-        _pill(canvas, doses[a.id]!, r.center, w * 0.026, brand);
+        _pill(
+          canvas,
+          doses[a.id]!,
+          r.center + Offset(0, -w * 0.04),
+          w * 0.024,
+          brand,
+        );
       }
     }
+    // نجمة لمعة.
+    _star(canvas, p(0.86, 0.14), w * 0.025, brand.accent);
+    _star(canvas, p(0.9, 0.2), w * 0.012, brand.accent);
+  }
+
+  void _star(Canvas canvas, Offset c, double r, Color color) {
+    final k = r * 0.22;
+    canvas.drawPath(
+      Path()
+        ..moveTo(c.dx, c.dy - r)
+        ..quadraticBezierTo(c.dx + k, c.dy - k, c.dx + r, c.dy)
+        ..quadraticBezierTo(c.dx + k, c.dy + k, c.dx, c.dy + r)
+        ..quadraticBezierTo(c.dx - k, c.dy + k, c.dx - r, c.dy)
+        ..quadraticBezierTo(c.dx - k, c.dy - k, c.dx, c.dy - r)
+        ..close(),
+      Paint()..color = color,
+    );
   }
 
   @override
