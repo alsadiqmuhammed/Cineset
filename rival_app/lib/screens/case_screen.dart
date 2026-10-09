@@ -38,10 +38,7 @@ class _CaseScreenState extends State<CaseScreen> {
   @override
   void dispose() {
     _aligner.close();
-    if (_note.text != c.note) {
-      c.note = _note.text;
-      Store.instance.save();
-    }
+    Store.instance.flush();
     _note.dispose();
     super.dispose();
   }
@@ -526,7 +523,10 @@ class _CaseScreenState extends State<CaseScreen> {
                 controller: _note,
                 minLines: 3,
                 maxLines: 8,
-                onChanged: (v) => c.note = v,
+                onChanged: (v) {
+                  c.note = v;
+                  Store.instance.saveSoon();
+                },
                 decoration: const InputDecoration(
                   hintText: 'التشخيص، المواد المستخدمة، التوصيات...',
                 ),
@@ -580,6 +580,7 @@ class _CaseScreenState extends State<CaseScreen> {
                     fit: StackFit.expand,
                     children: [
                       Image.file(
+                        errorBuilder: missingPhoto,
                         File(p.path),
                         fit: BoxFit.cover,
                         cacheWidth: 600,
@@ -734,54 +735,56 @@ class _VisitSheetState extends State<_VisitSheet> {
   @override
   Widget build(BuildContext context) {
     final b = context.brand;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        20,
-        20,
-        MediaQuery.of(context).viewInsets.bottom + 20,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            b.teethChart ? 'زيارة' : 'جلسة',
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: () async {
-              final d = await showDatePicker(
-                context: context,
-                initialDate: _date,
-                firstDate: DateTime(2015),
-                lastDate: DateTime(2100),
-              );
-              if (d != null) setState(() => _date = d);
-            },
-            icon: const Icon(Icons.event),
-            label: Text(arDate(_date.millisecondsSinceEpoch)),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _note,
-            minLines: 2,
-            maxLines: 5,
-            decoration: const InputDecoration(labelText: 'شنو انسوّى'),
-          ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: () {
-              final v = widget.existing ?? Visit(id: Store.newId(), date: 0);
-              v
-                ..date = _date.millisecondsSinceEpoch
-                ..note = _note.text.trim();
-              Navigator.pop(context, v);
-            },
-            child: const Text('حفظ'),
-          ),
-        ],
+    return SingleChildScrollView(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          MediaQuery.of(context).viewInsets.bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              b.teethChart ? 'زيارة' : 'جلسة',
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final d = await showDatePicker(
+                  context: context,
+                  initialDate: _date,
+                  firstDate: DateTime(2015),
+                  lastDate: DateTime(2100),
+                );
+                if (d != null) setState(() => _date = d);
+              },
+              icon: const Icon(Icons.event),
+              label: Text(arDate(_date.millisecondsSinceEpoch)),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _note,
+              minLines: 2,
+              maxLines: 5,
+              decoration: const InputDecoration(labelText: 'شنو انسوّى'),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () {
+                final v = widget.existing ?? Visit(id: Store.newId(), date: 0);
+                v
+                  ..date = _date.millisecondsSinceEpoch
+                  ..note = _note.text.trim();
+                Navigator.pop(context, v);
+              },
+              child: const Text('حفظ'),
+            ),
+          ],
+        ),
       ),
     );
   }

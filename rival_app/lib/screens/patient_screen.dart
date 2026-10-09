@@ -255,10 +255,7 @@ class _NotesFieldState extends State<_NotesField> {
 
   @override
   void dispose() {
-    if (_c.text != widget.patient.notes) {
-      widget.patient.notes = _c.text;
-      Store.instance.save();
-    }
+    Store.instance.flush();
     _c.dispose();
     super.dispose();
   }
@@ -271,8 +268,10 @@ class _NotesFieldState extends State<_NotesField> {
     decoration: const InputDecoration(
       hintText: 'حساسية، أدوية، ملاحظات عامة...',
     ),
-    onChanged: (v) => widget.patient.notes = v,
-    onEditingComplete: Store.instance.save,
+    onChanged: (v) {
+      widget.patient.notes = v;
+      Store.instance.saveSoon();
+    },
   );
 }
 
@@ -375,63 +374,65 @@ class _NewCaseSheetState extends State<_NewCaseSheet> {
   Widget build(BuildContext context) {
     final b = context.brand;
     final doctors = Store.instance.doctors;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        20,
-        20,
-        MediaQuery.of(context).viewInsets.bottom + 20,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            'حالة جديدة',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _title,
-            decoration: InputDecoration(
-              labelText: b.teethChart ? 'نوع العلاج' : 'نوع الجلسة',
+    return SingleChildScrollView(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          MediaQuery.of(context).viewInsets.bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'حالة جديدة',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
             ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final t in b.treatments)
-                ChoiceChip(
-                  label: Text(t),
-                  selected: _title.text == t,
-                  onSelected: (_) => setState(() => _title.text = t),
-                ),
-            ],
-          ),
-          if (!Store.instance.isDoctorAccount) ...[
-            const SizedBox(height: 16),
-            Text('الطبيب', style: TextStyle(color: b.muted)),
-            const SizedBox(height: 6),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _title,
+              decoration: InputDecoration(
+                labelText: b.teethChart ? 'نوع العلاج' : 'نوع الجلسة',
+              ),
+            ),
+            const SizedBox(height: 10),
             Wrap(
               spacing: 6,
               runSpacing: 6,
               children: [
-                for (final d in doctors)
+                for (final t in b.treatments)
                   ChoiceChip(
-                    avatar: DoctorAvatar(d, size: 22),
-                    label: Text(d.name),
-                    selected: _doctor == d.id,
-                    onSelected: (v) =>
-                        setState(() => _doctor = v ? d.id : null),
+                    label: Text(t),
+                    selected: _title.text == t,
+                    onSelected: (_) => setState(() => _title.text = t),
                   ),
               ],
             ),
+            if (!Store.instance.isDoctorAccount) ...[
+              const SizedBox(height: 16),
+              Text('الطبيب', style: TextStyle(color: b.muted)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final d in doctors)
+                    ChoiceChip(
+                      avatar: DoctorAvatar(d, size: 22),
+                      label: Text(d.name),
+                      selected: _doctor == d.id,
+                      onSelected: (v) =>
+                          setState(() => _doctor = v ? d.id : null),
+                    ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 18),
+            FilledButton(onPressed: _submit, child: const Text('إنشاء')),
           ],
-          const SizedBox(height: 18),
-          FilledButton(onPressed: _submit, child: const Text('إنشاء')),
-        ],
+        ),
       ),
     );
   }

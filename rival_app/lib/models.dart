@@ -131,6 +131,35 @@ class CaseRecord {
 
   int get paid => payments.fold(0, (s, p) => s + p.amount);
 
+  /// ياخذ قيم نسخة ثانية بنفس الكائن (حتى الشاشات المفتوحة تبقى مربوطة بيه).
+  void assign(CaseRecord o) {
+    title = o.title;
+    note = o.note;
+    before = o.before;
+    after = o.after;
+    doctorId = o.doctorId;
+    status = o.status;
+    completed = o.completed;
+    teeth
+      ..clear()
+      ..addAll(o.teeth);
+    deciduous = o.deciduous;
+    areas
+      ..clear()
+      ..addAll(o.areas);
+    doses
+      ..clear()
+      ..addAll(o.doses);
+    visits
+      ..clear()
+      ..addAll(o.visits);
+    nextVisit = o.nextVisit;
+    price = o.price;
+    payments
+      ..clear()
+      ..addAll(o.payments);
+  }
+
   /// المتبقي على المراجع (null إذا الكلفة ما محددة).
   int? get due => price == null ? null : price! - paid;
 
@@ -233,6 +262,16 @@ class Patient {
 
   int? get age => birthYear == null ? null : DateTime.now().year - birthYear!;
 
+  /// بيانات المراجع من نسخة ثانية (بدون الحالات).
+  void assign(Patient o) {
+    name = o.name;
+    phone = o.phone;
+    gender = o.gender;
+    birthYear = o.birthYear;
+    notes = o.notes;
+    createdBy = o.createdBy;
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
@@ -288,6 +327,19 @@ class Doctor {
     List<String>? services,
   }) : services = services ?? [];
 
+  void assign(Doctor o) {
+    name = o.name;
+    specialty = o.specialty;
+    phone = o.phone;
+    bio = o.bio;
+    photo = o.photo;
+    signature = o.signature;
+    stamp = o.stamp;
+    services
+      ..clear()
+      ..addAll(o.services);
+  }
+
   /// أول حرف من الاسم بدون "د."
   String get initial {
     final n = name.replaceFirst(RegExp(r'^د\.?\s*'), '').trim();
@@ -337,6 +389,14 @@ class ClinicInfo {
     this.instagram = '',
     this.activeDoctorId,
   }) : phones = phones ?? [];
+
+  void assign(ClinicInfo o) {
+    address = o.address;
+    hours = o.hours;
+    phones = [...o.phones];
+    instagram = o.instagram;
+    activeDoctorId = o.activeDoctorId;
+  }
 
   Map<String, dynamic> toJson() => {
     'address': address,

@@ -8,6 +8,7 @@ import '../design.dart';
 import '../models.dart';
 import '../render.dart';
 import '../store.dart';
+import 'common.dart';
 import 'design_canvas.dart';
 import 'design_controls.dart';
 import 'elements_bar.dart';
@@ -46,8 +47,16 @@ class _ComposeScreenState extends State<ComposeScreen> {
     _c.addListener(() => _exported = null);
     () async {
       final r = widget.record;
-      _photos[Which.before] = (await loadImage(r.before!.path), r.before!);
-      _photos[Which.after] = (await loadImage(r.after!.path), r.after!);
+      try {
+        _photos[Which.before] = (await loadImage(r.before!.path), r.before!);
+        _photos[Which.after] = (await loadImage(r.after!.path), r.after!);
+      } catch (e) {
+        // صورة بعدها تنزل من جهاز ثاني أو انحذفت: نرجع برسالة بدل التحميل للأبد.
+        if (!mounted) return;
+        toast(context, '$e. جرب بعد شوية.');
+        Navigator.pop(context);
+        return;
+      }
       _logo = await loadAssetImage(_brand.logoReversed);
       await _applyTemplate(_template);
       _addDoctorName();

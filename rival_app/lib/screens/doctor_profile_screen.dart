@@ -264,6 +264,7 @@ class DoctorProfileScreen extends StatelessWidget {
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(12),
                                 child: Image.file(
+                                  errorBuilder: missingPhoto,
                                   File(c.after!.path),
                                   fit: BoxFit.cover,
                                   cacheWidth: 300,

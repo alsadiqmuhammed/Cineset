@@ -61,8 +61,16 @@ class MoreScreen extends StatelessWidget {
         }
         return;
       }
-      final ok = await auth.authenticate(localizedReason: 'تفعيل قفل التطبيق');
-      if (!ok) return;
+      bool ok;
+      try {
+        ok = await auth.authenticate(localizedReason: 'تفعيل قفل التطبيق');
+      } catch (_) {
+        ok = false; // ألغى أو ماكو قفل شاشة.
+      }
+      if (!ok) {
+        if (context.mounted) toast(context, 'ما تفعّل القفل');
+        return;
+      }
     }
     await Store.instance.setLock(v);
   }
@@ -380,58 +388,60 @@ class _ClinicSheetState extends State<_ClinicSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        20,
-        20,
-        MediaQuery.of(context).viewInsets.bottom + 20,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            'معلومات العيادة',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _address,
-            decoration: const InputDecoration(labelText: 'العنوان'),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _hours,
-            decoration: const InputDecoration(labelText: 'الدوام'),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _phones,
-            minLines: 2,
-            maxLines: 4,
-            textDirection: TextDirection.ltr,
-            decoration: const InputDecoration(
-              labelText: 'أرقام الهاتف (كل رقم بسطر)',
+    return SingleChildScrollView(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          MediaQuery.of(context).viewInsets.bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'معلومات العيادة',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
             ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: () async {
-              c
-                ..address = _address.text.trim()
-                ..hours = _hours.text.trim()
-                ..phones = _phones.text
-                    .split('\n')
-                    .map((e) => e.trim())
-                    .where((e) => e.isNotEmpty)
-                    .toList();
-              await Store.instance.saveAll();
-              if (context.mounted) Navigator.pop(context);
-            },
-            child: const Text('حفظ'),
-          ),
-        ],
+            const SizedBox(height: 14),
+            TextField(
+              controller: _address,
+              decoration: const InputDecoration(labelText: 'العنوان'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _hours,
+              decoration: const InputDecoration(labelText: 'الدوام'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _phones,
+              minLines: 2,
+              maxLines: 4,
+              textDirection: TextDirection.ltr,
+              decoration: const InputDecoration(
+                labelText: 'أرقام الهاتف (كل رقم بسطر)',
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () async {
+                c
+                  ..address = _address.text.trim()
+                  ..hours = _hours.text.trim()
+                  ..phones = _phones.text
+                      .split('\n')
+                      .map((e) => e.trim())
+                      .where((e) => e.isNotEmpty)
+                      .toList();
+                await Store.instance.saveAll();
+                if (context.mounted) Navigator.pop(context);
+              },
+              child: const Text('حفظ'),
+            ),
+          ],
+        ),
       ),
     );
   }

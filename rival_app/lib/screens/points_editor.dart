@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../render.dart';
 import '../brand.dart';
+import 'common.dart';
 
 /// تحديد نقطتي المحاذاة يدوياً: اسحب النقطتين لزاويتي الفم (أو طرفي الأنياب)،
 /// ونفس النقطتين بصورة "بعد" حتى تتطابق الصورتان.
@@ -26,14 +27,20 @@ class _PointsEditorState extends State<PointsEditor> {
   @override
   void initState() {
     super.initState();
-    loadImage(widget.photo.path).then((img) {
-      if (!mounted) return;
-      setState(() {
-        _image = img;
-        _a = widget.photo.a ?? Offset(img.width * 0.35, img.height * 0.55);
-        _b = widget.photo.b ?? Offset(img.width * 0.65, img.height * 0.55);
-      });
-    });
+    loadImage(widget.photo.path)
+        .then((img) {
+          if (!mounted) return;
+          setState(() {
+            _image = img;
+            _a = widget.photo.a ?? Offset(img.width * 0.35, img.height * 0.55);
+            _b = widget.photo.b ?? Offset(img.width * 0.65, img.height * 0.55);
+          });
+        })
+        .catchError((Object e) {
+          if (!mounted) return;
+          toast(context, '$e');
+          Navigator.pop(context);
+        });
   }
 
   @override
@@ -123,7 +130,11 @@ class _PointsEditorState extends State<PointsEditor> {
         children: [
           Positioned.fromRect(
             rect: origin & fit.destination,
-            child: Image.file(File(widget.photo.path), fit: BoxFit.fill),
+            child: Image.file(
+              errorBuilder: missingPhoto,
+              File(widget.photo.path),
+              fit: BoxFit.fill,
+            ),
           ),
           CustomPaint(
             size: box.biggest,

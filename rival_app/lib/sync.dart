@@ -320,9 +320,14 @@ class SyncEngine {
       if (kind == 'people') {
         _remoteDoctors[d.id] = _listOf(d.fields['doctors']).toSet();
       }
+      final prev = seen[d.id];
+      final mine = local[d.id];
       seen[d.id] = _sig(d, kind);
       known.add(d.id);
-      if (local[d.id]?.json == d.json) continue;
+      if (mine?.json == d.json) continue;
+      // تعديل محلي ما انرفع بعد (مثلاً تأكيد السيرفر لتعديل سابق وصل
+      // والطبيب بعده يأشر): ما نكتب فوقه، والرفع الجاي يثبّته.
+      if (mine != null && prev != null && mine.signature != prev) continue;
       _apply(kind, d.id, d.json);
       changed = true;
     }
@@ -363,39 +368,45 @@ class SyncEngine {
   void _apply(String kind, String id, String json) {
     final data = jsonDecode(_toLocal(json)) as Map<String, dynamic>;
     switch (kind) {
+      // الموجود يتحدث بمكانه (assign) حتى الشاشات المفتوحة تبقى على نفس
+      // الكائن وتعديلاتها تنحفظ.
       case 'people':
-        final p = Patient.fromJson({...data, 'cases': const []});
-        final old = _patient(id);
-        p.cases.addAll(old?.cases ?? const []);
-        p.cases.addAll(_orphans.remove(id)?.values ?? const []);
-        _sortCases(p);
-        if (old == null) {
+        final fresh = Patient.fromJson({...data, 'cases': const []});
+        var p = _patient(id);
+        if (p == null) {
+          p = fresh;
           store.patients.add(p);
           store.patients.sort((a, b) => b.created.compareTo(a.created));
         } else {
-          store.patients[store.patients.indexOf(old)] = p;
+          p.assign(fresh);
         }
+        p.cases.addAll(_orphans.remove(id)?.values ?? const []);
+        _sortCases(p);
       case 'cases':
-        final c = CaseRecord.fromJson(data);
+        final fresh = CaseRecord.fromJson(data);
         final pid = data['patientId'] as String?;
-        // الحالة يمكن انتقلت لمراجع ثاني: نشيلها من القديم.
+        CaseRecord? c;
         for (final p in store.patients) {
-          if (p.id != pid) p.cases.removeWhere((e) => e.id == id);
+          final i = p.cases.indexWhere((e) => e.id == id);
+          if (i < 0) continue;
+          c = p.cases[i];
+          // الحالة انتقلت لمراجع ثاني: نشيلها من القديم.
+          if (p.id != pid) p.cases.removeAt(i);
         }
+        c = (c?..assign(fresh)) ?? fresh;
         final p = pid == null ? null : _patient(pid);
         if (p == null) {
           if (pid != null) (_orphans[pid] ??= {})[id] = c;
           return;
         }
-        final i = p.cases.indexWhere((e) => e.id == id);
-        i < 0 ? p.cases.add(c) : p.cases[i] = c;
+        if (!p.cases.contains(c)) p.cases.add(c);
         _sortCases(p);
       case 'doctors':
         final d = Doctor.fromJson(data);
         final i = store.doctors.indexWhere((e) => e.id == id);
-        i < 0 ? store.doctors.add(d) : store.doctors[i] = d;
+        i < 0 ? store.doctors.add(d) : store.doctors[i].assign(d);
       default:
-        store.clinic = ClinicInfo.fromJson(data);
+        store.clinic.assign(ClinicInfo.fromJson(data));
     }
   }
 

@@ -283,7 +283,11 @@ class _PngTile extends StatelessWidget {
                       ),
                     ],
                   )
-                : Image.file(File(path!), fit: BoxFit.contain),
+                : Image.file(
+                    errorBuilder: missingPhoto,
+                    File(path!),
+                    fit: BoxFit.contain,
+                  ),
           ),
         ),
         if (path != null)

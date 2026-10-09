@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -119,6 +120,32 @@ class Store extends ChangeNotifier {
   /// يفتح القسم ويقرأ بياناته. إذا هو مفتوح أصلاً ما يعيد القراءة.
   Future<void> open(Section s, {bool reload = false}) async {
     if (!reload && _opened == s) return;
+    // فتحتين بنفس الوقت (ضغطتين سريعة) كانت تخلط المراجعين: الثانية تنتظر.
+    final busy = _opening;
+    if (busy != null) {
+      await busy;
+      if (!reload && _opened == s) return;
+    }
+    final done = Completer<void>();
+    _opening = done.future;
+    try {
+      await _open(s);
+    } finally {
+      _opening = null;
+      done.complete();
+    }
+  }
+
+  Future<void>? _opening;
+
+  /// أكو قسم مفتوح (حتى نعرف أي هوية نستخدم).
+  bool get opened => _opened != null;
+
+  Future<void> _open(Section s) async {
+    // مزامنة القسم القديم توقف قبل ما نبدّل القوائم.
+    final old = sync;
+    sync = null;
+    await old?.detach();
     section = s;
     for (final d in [photosDir, overlaysDir, exportsDir]) {
       await d.create(recursive: true);
@@ -206,6 +233,25 @@ class Store extends ChangeNotifier {
     await _write(_clinicFile, clinic);
     notifyListeners();
     sync?.schedulePush();
+  }
+
+  Timer? _soon;
+
+  /// حفظ بعد ما يوقف الكتابة شوية (للملاحظات وأي حقل يتغير حرف بحرف).
+  void saveSoon() {
+    _soon?.cancel();
+    _soon = Timer(const Duration(milliseconds: 800), () {
+      _soon = null;
+      save();
+    });
+  }
+
+  /// يحفظ الحفظ المؤجل هسه (مثلاً لما التطبيق يروح للخلفية).
+  Future<void> flush() async {
+    if (_soon == null) return;
+    _soon!.cancel();
+    _soon = null;
+    await save();
   }
 
   /// يحفظ اللي نزل من قاعدة البيانات (بدون ما يرجع يرفعه).

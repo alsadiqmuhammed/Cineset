@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -83,28 +84,52 @@ class Cloud extends ChangeNotifier {
       available = false;
       return;
     }
-    // مسجل من قبل: نقرا صلاحياته (من الذاكرة إذا ماكو إنترنت).
+    // مسجل من قبل: نقرا صلاحياته. بدون إنترنت نستخدم آخر نسخة محفوظة،
+    // وما نطلّعه من حسابه إلا إذا السيرفر أكّد إن الحساب انشال.
     if (user != null) {
-      member = await _loadMember();
-      if (member == null) {
+      final (m, removed) = await _loadMember(
+        timeout: const Duration(seconds: 6),
+      );
+      if (removed) {
         await FirebaseAuth.instance.signOut();
-      } else {
+      } else if (m != null) {
+        member = m;
         await Store.instance.useAccount(user!.uid);
       }
     }
   }
 
-  Future<Member?> _loadMember() async {
+  File get _memberCache =>
+      File('${Store.instance.device.path}/member_${user?.uid}.json');
+
+  /// (الصلاحيات، هل السيرفر أكّد إن الحساب ما موجود).
+  Future<(Member?, bool)> _loadMember({Duration? timeout}) async {
     final email = user?.email?.toLowerCase();
-    if (email == null) return null;
+    if (email == null) return (null, true);
     try {
-      final doc = await FirebaseFirestore.instance
+      var future = FirebaseFirestore.instance
           .collection('members')
           .doc(email)
           .get();
-      return doc.exists ? Member.fromJson(email, doc.data()!) : null;
+      if (timeout != null) future = future.timeout(timeout);
+      final doc = await future;
+      if (doc.exists) {
+        final data = doc.data()!;
+        await _memberCache.writeAsString(jsonEncode(data));
+        return (Member.fromJson(email, data), false);
+      }
+      if (!doc.metadata.isFromCache) {
+        if (await _memberCache.exists()) await _memberCache.delete();
+        return (null, true);
+      }
     } catch (_) {
-      return null;
+      // بدون إنترنت أو بطء: نكمل على النسخة المحفوظة.
+    }
+    try {
+      final data = jsonDecode(await _memberCache.readAsString());
+      return (Member.fromJson(email, data as Map<String, dynamic>), false);
+    } catch (_) {
+      return (null, false);
     }
   }
 
@@ -132,7 +157,7 @@ class Cloud extends ChangeNotifier {
       await FirebaseAuth.instance.signOut();
       return problem;
     }
-    member = await _loadMember();
+    member = (await _loadMember()).$1;
     final m = member;
     if (m == null) {
       await FirebaseAuth.instance.signOut();
@@ -187,8 +212,18 @@ class Cloud extends ChangeNotifier {
 
   /// يشغّل المزامنة للقسم المفتوح بالمتجر.
   Future<void> attach(Store store) async {
+    if (!signedIn) return;
+    // الصلاحيات ممكن تغيرت من الإدارة: نحدثها (بدون إنترنت تبقى المحفوظة).
+    final (fresh, removed) = await _loadMember(
+      timeout: const Duration(seconds: 4),
+    );
+    if (removed) {
+      await signOut();
+      return;
+    }
+    if (fresh != null) member = fresh;
     final m = member;
-    if (!signedIn || m == null) return;
+    if (m == null) return;
     await detach();
     final section = store.section.name;
     store.myDoctorId = m.isAdmin ? null : m.doctorFor(section);

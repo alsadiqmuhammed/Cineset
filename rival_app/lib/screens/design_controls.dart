@@ -43,7 +43,12 @@ class OverlayPicker extends StatelessWidget {
               ? Center(
                   child: Text('بدون', style: TextStyle(color: b.muted)),
                 )
-              : Image.file(File(path), fit: BoxFit.contain, cacheWidth: 200),
+              : Image.file(
+                  errorBuilder: missingPhoto,
+                  File(path),
+                  fit: BoxFit.contain,
+                  cacheWidth: 200,
+                ),
         ),
       );
     }

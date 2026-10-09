@@ -34,6 +34,8 @@ class _LockGateState extends State<LockGate> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // أي كتابة ما انحفظت بعد تنحفظ قبل ما النظام يطفّي التطبيق.
+    if (state == AppLifecycleState.paused) Store.instance.flush();
     if (!Store.instance.lockEnabled || _authing) return;
     if (state == AppLifecycleState.paused) _pausedAt = DateTime.now();
     if (state == AppLifecycleState.resumed && _pausedAt != null) {
@@ -55,9 +57,14 @@ class _LockGateState extends State<LockGate> with WidgetsBindingObserver {
         persistAcrossBackgrounding: true,
       );
       if (ok && mounted) setState(() => _locked = false);
+    } on LocalAuthException catch (e) {
+      // بس إذا التلفون ما بيه أي قفل شاشة ينفتح بدون تحقق. الإلغاء، الوقت،
+      // والقفل المؤقت بعد محاولات غلط يخلّون التطبيق مقفول.
+      if (e.code == LocalAuthExceptionCode.noCredentialsSet && mounted) {
+        setState(() => _locked = false);
+      }
     } catch (_) {
-      // إذا التلفون بدون قفل شاشة، ما نحبس الطبيب برّه التطبيق.
-      if (mounted) setState(() => _locked = false);
+      // خطأ ثاني: يبقى مقفول، وزر "افتح التطبيق" يحاول مرة ثانية.
     } finally {
       _authing = false;
     }
@@ -65,9 +72,20 @@ class _LockGateState extends State<LockGate> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    if (!_locked) return widget.child;
-    final b = context.brand;
+    // القفل طبقة فوق كل الشاشات المفتوحة (مو بس الرئيسية)، فلو رجع
+    // للتطبيق وهو على صفحة حالة ما تبين الصور.
+    return Stack(
+      children: [
+        Offstage(offstage: _locked, child: widget.child),
+        if (_locked) Positioned.fill(child: _lockScreen(context)),
+      ],
+    );
+  }
+
+  Widget _lockScreen(BuildContext context) {
+    final b = Store.instance.opened ? Store.instance.brand : dental;
     return Scaffold(
+      backgroundColor: b.bg,
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,

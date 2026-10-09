@@ -55,18 +55,45 @@ class Framing {
 
 final _cache = <String, ui.Image>{};
 
+/// صور الحالات بالذاكرة: آخر ٦ بس (صورة ٢٤٠٠ بكسل حوالي ٢٠ ميغا).
+/// القديمة ما تنمسح غصباً (ممكن شاشة بعدها تستخدمها)، بس تنترك للذاكرة.
+const _maxPhotos = 6;
+final _recent = <String>[];
+
+/// الصورة ما موجودة على الجهاز (بعدها تنزل من جهاز ثاني، أو انحذفت).
+class PhotoMissing implements Exception {
+  final String path;
+  const PhotoMissing(this.path);
+  @override
+  String toString() => 'الصورة بعدها ما نزلت على هذا الجهاز';
+}
+
 Future<ui.Image> loadImage(String path) async {
   final cached = _cache[path];
-  if (cached != null) return cached;
-  final codec = await ui.instantiateImageCodec(await File(path).readAsBytes());
+  if (cached != null) {
+    _recent
+      ..remove(path)
+      ..add(path);
+    return cached;
+  }
+  final file = File(path);
+  if (!await file.exists()) throw PhotoMissing(path);
+  final codec = await ui.instantiateImageCodec(await file.readAsBytes());
   final image = (await codec.getNextFrame()).image;
   _cache[path] = image;
+  _recent.add(path);
+  while (_recent.length > _maxPhotos) {
+    _cache.remove(_recent.removeAt(0));
+  }
   return image;
 }
 
 void evictImage(String path) => _cache.remove(path)?.dispose();
 
-void clearImageCache() => _cache.clear();
+void clearImageCache() {
+  _cache.clear();
+  _recent.clear();
+}
 
 /// صورة من ملفات التطبيق (الشعارات).
 Future<ui.Image> loadAssetImage(String asset) async {
@@ -518,8 +545,13 @@ Future<String> writePng(ui.Image image, String path) async {
 /// تُستخدم من التقرير: صورة قبل وبعد مربعة بدون إطار.
 Future<ui.Image?> renderReportComposite(CaseRecord c, Brand brand) async {
   if (c.before == null || c.after == null) return null;
-  final before = await loadImage(c.before!.path);
-  final after = await loadImage(c.after!.path);
+  final ui.Image before, after;
+  try {
+    before = await loadImage(c.before!.path);
+    after = await loadImage(c.after!.path);
+  } on PhotoMissing {
+    return null; // التقرير يطلع بدون صورة قبل وبعد.
+  }
   final format = PostFormat.square;
   final (cell, _) = cellsFor(format.size, Layout.sideBySide);
   final offsetY = brand.alignTarget == AlignTarget.eyes ? 0.08 : 0.0;

@@ -362,4 +362,63 @@ void main() {
     expect(names, containsAll(['محلي', 'من القاعدة']));
     expect(backend.of('people'), hasLength(2));
   });
+
+  test('a late server echo does not wipe a newer local edit', () async {
+    await start();
+    final p = await store.addPatient('زينب', '0770');
+    final c = CaseRecord(id: 'c1', title: 'فينير', created: 0, teeth: [11]);
+    p.cases.add(c);
+    await store.save();
+    await wait();
+    // سن ثاني انضاف، وقبل الرفع وصل تأكيد السيرفر للنسخة القديمة.
+    c.teeth.add(12);
+    await store.save();
+    backend.emit('dental', 'cases');
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(c.teeth, [11, 12]);
+    await wait();
+    expect(backend.of('cases')['c1']!.json, contains('[11,12]'));
+  });
+
+  test('remote updates keep the same objects open screens hold', () async {
+    await start();
+    final p = await store.addPatient('مريم', '0770');
+    final c = CaseRecord(id: 'c1', title: 'فلر', created: 0);
+    p.cases.add(c);
+    await store.save();
+    await wait();
+    final doctor = store.doctors.first;
+    final clinic = store.clinic;
+
+    final edited = CaseRecord.fromJson(c.toJson())..title = 'فلر شفايف';
+    await backend.put(
+      'dental',
+      'cases',
+      'c1',
+      jsonEncode({...edited.toJson(), 'patientId': p.id}),
+      fields: {'doctorId': null, 'patientId': p.id},
+    );
+    final renamed = Patient.fromJson(p.toJson())..name = 'مريم جاسم';
+    await backend.put(
+      'dental',
+      'people',
+      p.id,
+      jsonEncode(renamed.toJson()..remove('cases')),
+      fields: {'doctors': <String>[]},
+    );
+    await backend.put(
+      'dental',
+      'doctors',
+      doctor.id,
+      jsonEncode(Doctor.fromJson(doctor.toJson())..name = 'د. جديد'),
+    );
+    await wait();
+    expect(identical(store.patients.single, p), isTrue);
+    expect(identical(p.cases.single, c), isTrue);
+    expect(c.title, 'فلر شفايف');
+    expect(p.name, 'مريم جاسم');
+    expect(identical(store.doctors.first, doctor), isTrue);
+    expect(doctor.name, 'د. جديد');
+    expect(identical(store.clinic, clinic), isTrue);
+  });
 }

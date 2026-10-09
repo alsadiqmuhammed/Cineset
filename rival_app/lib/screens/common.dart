@@ -395,6 +395,7 @@ class DoctorAvatar extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: d?.photo != null
           ? Image.file(
+              errorBuilder: missingPhoto,
               File(d!.photo!),
               fit: BoxFit.cover,
               cacheWidth: (size * 3).round(),
@@ -506,6 +507,16 @@ class BarRow extends StatelessWidget {
 }
 
 String formatDate(int ms) => arDate(ms);
+
+/// مكان صورة ما موجودة بعد (تنزل من جهاز ثاني) أو انحذفت.
+Widget missingPhoto(BuildContext context, Object error, StackTrace? stack) {
+  final b = context.brand;
+  return Container(
+    color: b.line.withValues(alpha: 0.5),
+    alignment: Alignment.center,
+    child: Icon(Icons.cloud_download_outlined, color: b.muted),
+  );
+}
 
 /// مبدّل القسم بضغطة وحدة (أسنان / تجميل).
 class SectionSwitch extends StatelessWidget {

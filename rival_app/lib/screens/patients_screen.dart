@@ -269,68 +269,70 @@ class _PatientSheetState extends State<_PatientSheet> {
   @override
   Widget build(BuildContext context) {
     final b = context.brand;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        20,
-        20,
-        MediaQuery.of(context).viewInsets.bottom + 20,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            widget.existing == null ? b.newPatient : 'تعديل البيانات',
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _name,
-            autofocus: widget.existing == null,
-            textInputAction: TextInputAction.next,
-            decoration: const InputDecoration(labelText: 'الاسم'),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                flex: 3,
-                child: TextField(
-                  controller: _phone,
-                  keyboardType: TextInputType.phone,
-                  textDirection: TextDirection.ltr,
-                  decoration: const InputDecoration(labelText: 'رقم الهاتف'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
-                child: TextField(
-                  controller: _age,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'العمر'),
-                ),
-              ),
-            ],
-          ),
-          if (!b.feminine) ...[
+    return SingleChildScrollView(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          MediaQuery.of(context).viewInsets.bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              widget.existing == null ? b.newPatient : 'تعديل البيانات',
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _name,
+              autofocus: widget.existing == null,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'الاسم'),
+            ),
             const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
+            Row(
               children: [
-                for (final g in Gender.values)
-                  ChoiceChip(
-                    label: Text(g.label),
-                    selected: _gender == g,
-                    onSelected: (v) => setState(() => _gender = v ? g : null),
+                Expanded(
+                  flex: 3,
+                  child: TextField(
+                    controller: _phone,
+                    keyboardType: TextInputType.phone,
+                    textDirection: TextDirection.ltr,
+                    decoration: const InputDecoration(labelText: 'رقم الهاتف'),
                   ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: TextField(
+                    controller: _age,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'العمر'),
+                  ),
+                ),
               ],
             ),
+            if (!b.feminine) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final g in Gender.values)
+                    ChoiceChip(
+                      label: Text(g.label),
+                      selected: _gender == g,
+                      onSelected: (v) => setState(() => _gender = v ? g : null),
+                    ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 18),
+            FilledButton(onPressed: _submit, child: const Text('حفظ')),
           ],
-          const SizedBox(height: 18),
-          FilledButton(onPressed: _submit, child: const Text('حفظ')),
-        ],
+        ),
       ),
     );
   }

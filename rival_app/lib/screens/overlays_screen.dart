@@ -77,6 +77,7 @@ class OverlaysScreen extends StatelessWidget {
                             ),
                           ),
                           Image.file(
+                            errorBuilder: missingPhoto,
                             File(path),
                             fit: BoxFit.contain,
                             cacheWidth: 500,

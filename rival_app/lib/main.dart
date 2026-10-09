@@ -83,14 +83,17 @@ class RivalAppState extends State<RivalApp> {
   }
 
   Future<void> choose(Section s) async {
+    // ضغطتين سريعة على مبدّل القسم ما تفتح مرتين.
+    if (_opening) return;
     setState(() => _opening = true);
-    await Store.instance.open(s);
-    await Cloud.instance.attach(Store.instance);
-    if (!mounted) return;
-    setState(() {
-      _section = s;
-      _opening = false;
-    });
+    try {
+      await Store.instance.open(s);
+      await Cloud.instance.attach(Store.instance);
+      if (!mounted) return;
+      setState(() => _section = s);
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
   }
 
   void switchSection() => setState(() => _section = null);
@@ -116,26 +119,25 @@ class RivalAppState extends State<RivalApp> {
         value: SystemUiOverlayStyle.dark.copyWith(
           statusBarColor: Colors.transparent,
         ),
-        child: LockGate(
-          child: _needsLogin
-              ? LoginScreen(
-                  onDone: () {
-                    _account = Store.instance.account;
-                    setState(() {});
-                    WidgetsBinding.instance.addPostFrameCallback(
-                      (_) => _autoOpen(),
-                    );
-                  },
-                )
-              : s == null
-              ? SectionPicker(
-                  onChosen: choose,
-                  busy: _opening,
-                  allowed: allowedSections,
-                )
-              : HomeShell(key: ValueKey(s)),
-        ),
+        child: _needsLogin
+            ? LoginScreen(
+                onDone: () {
+                  _account = Store.instance.account;
+                  setState(() {});
+                  WidgetsBinding.instance.addPostFrameCallback(
+                    (_) => _autoOpen(),
+                  );
+                },
+              )
+            : s == null
+            ? SectionPicker(
+                onChosen: choose,
+                busy: _opening,
+                allowed: allowedSections,
+              )
+            : HomeShell(key: ValueKey(s)),
       ),
+      builder: (context, child) => LockGate(child: child!),
     );
   }
 }

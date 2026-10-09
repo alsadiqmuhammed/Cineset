@@ -54,8 +54,16 @@ class _VideoScreenState extends State<VideoScreen> {
     _c.addListener(_invalidate);
     () async {
       final r = widget.record;
-      _photos[Which.before] = (await loadImage(r.before!.path), r.before!);
-      _photos[Which.after] = (await loadImage(r.after!.path), r.after!);
+      try {
+        _photos[Which.before] = (await loadImage(r.before!.path), r.before!);
+        _photos[Which.after] = (await loadImage(r.after!.path), r.after!);
+      } catch (e) {
+        // صورة بعدها تنزل من جهاز ثاني أو انحذفت: نرجع برسالة بدل التحميل للأبد.
+        if (!mounted) return;
+        toast(context, '$e. جرب بعد شوية.');
+        Navigator.pop(context);
+        return;
+      }
       _logo = await loadAssetImage(_brand.logoReversed);
       _templateImg = await loadAssetImage(_story.asset);
       _fit();
