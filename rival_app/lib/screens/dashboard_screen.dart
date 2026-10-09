@@ -72,8 +72,17 @@ class DashboardScreen extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Image.asset(b.logoHorizontal, height: 34),
-                    const Spacer(),
+                    Flexible(
+                      child: Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Image.asset(
+                          b.logoHorizontal,
+                          height: 34,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     const SectionSwitch(),
                   ],
                 ),

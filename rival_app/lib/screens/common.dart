@@ -4,8 +4,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../brand.dart';
+import '../cloud.dart';
 import '../main.dart';
 import '../models.dart';
+import '../sync.dart';
 
 void toast(BuildContext context, String text) {
   ScaffoldMessenger.of(context)
@@ -498,6 +500,78 @@ String formatDate(int ms) => arDate(ms);
 /// مبدّل القسم بضغطة وحدة (أسنان / تجميل).
 class SectionSwitch extends StatelessWidget {
   const SectionSwitch({super.key});
+
+  @override
+  Widget build(BuildContext context) => const Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [ConnectionBadge(), SizedBox(width: 6), _SectionToggle()],
+  );
+}
+
+/// أيقونة صغيرة بأعلى الشاشة: متصل ومتزامن، متصل، أو بدون إنترنت.
+/// الضغط عليها يوضح الحالة.
+class ConnectionBadge extends StatelessWidget {
+  const ConnectionBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([Net.instance, Cloud.instance]),
+      builder: (context, _) {
+        final online = Net.instance.online;
+        final cloud = Cloud.instance;
+        final (icon, color, text) = !online
+            ? (
+                Icons.cloud_off,
+                const Color(0xFF9E9E9E),
+                'بدون إنترنت. تگدر تشتغل عادي، والتعديلات تنرفع لما يرجع الاتصال.',
+              )
+            : !cloud.signedIn
+            ? (
+                Icons.wifi,
+                const Color(0xFF2E7D32),
+                'متصل بالإنترنت. البيانات على هذا الجهاز بس (ما مسجل دخول بحساب العيادة).',
+              )
+            : switch (cloud.status) {
+                SyncStatus.synced => (
+                  Icons.cloud_done,
+                  const Color(0xFF2E7D32),
+                  'متصل ومتزامن ويا قاعدة بيانات العيادة.',
+                ),
+                SyncStatus.denied || SyncStatus.error => (
+                  Icons.cloud_off,
+                  const Color(0xFFC62828),
+                  '${cloud.status.label}${cloud.detail == null ? '' : '\n${cloud.detail}'}',
+                ),
+                _ => (
+                  Icons.cloud_sync,
+                  const Color(0xFFF9A825),
+                  'متصل، وجاري المزامنة ويا قاعدة بيانات العيادة...',
+                ),
+              };
+        return Tooltip(
+          message: text,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: () => toast(context, text),
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 18, color: color),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SectionToggle extends StatelessWidget {
+  const _SectionToggle();
 
   @override
   Widget build(BuildContext context) {

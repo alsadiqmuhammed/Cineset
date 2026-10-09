@@ -17,6 +17,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Store.instance.init();
   await Cloud.instance.init();
+  Net.instance.start();
   runApp(const RivalApp());
 }
 

@@ -62,25 +62,39 @@ class Cloud extends ChangeNotifier {
         _ => 'الإيميل أو الرمز غلط',
       };
     }
-    if (!await _isMember()) {
+    final problem = await _memberProblem();
+    if (problem != null) {
       await FirebaseAuth.instance.signOut();
-      return 'هذا الحساب مو مضاف لأعضاء العيادة. لازم يضيفه المسؤول بقائمة members';
+      return problem;
     }
     notifyListeners();
     return null;
   }
 
-  Future<bool> _isMember() async {
+  /// يتأكد إن الإيميل مضاف بمجموعة members، ويوضح السبب بالضبط إذا لا.
+  Future<String?> _memberProblem() async {
     final email = user?.email?.toLowerCase();
-    if (email == null) return false;
+    if (email == null) return 'الحساب ما بيه إيميل';
     try {
       final doc = await FirebaseFirestore.instance
           .collection('members')
           .doc(email)
-          .get();
-      return doc.exists;
-    } catch (_) {
-      return false;
+          .get(const GetOptions(source: Source.server));
+      if (doc.exists) return null;
+      return 'الحساب دخل، بس ماكو وثيقة باسم:\n$email\nبمجموعة members.\n'
+          'لازم رقم الوثيقة (Document ID) يكون الإيميل نفسه بالأحرف الصغيرة، '
+          'مو رقم تلقائي (Auto-ID).';
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        return 'قاعدة البيانات رفضت القراءة. تأكد إنك لصقت قواعد firestore.rules '
+            'بـ Firestore ← Rules ودست Publish.';
+      }
+      if (e.code == 'unavailable') {
+        return 'ما گدرنا نوصل لقاعدة البيانات. تأكد من الإنترنت وجرب مرة ثانية.';
+      }
+      return 'خطأ من قاعدة البيانات (${e.code}): ${e.message}';
+    } catch (e) {
+      return 'خطأ بالتأكد من العضوية: $e';
     }
   }
 
@@ -116,6 +130,45 @@ class Cloud extends ChangeNotifier {
 
   /// يرفع كل شي هسه (من زر "زامن الآن").
   Future<void> syncNow() async => _engine?.push();
+}
+
+/// هل الجهاز متصل بالإنترنت؟ يفحص كل ١٠ ثواني (وبسرعة لما يتغير الحال).
+class Net extends ChangeNotifier {
+  Net._();
+  static final instance = Net._();
+
+  bool online = true;
+  bool _started = false;
+  Timer? _timer;
+
+  void start() {
+    if (_started) return;
+    _started = true;
+    check();
+    _timer = Timer.periodic(const Duration(seconds: 10), (_) => check());
+  }
+
+  Future<void> check() async {
+    bool ok;
+    try {
+      final r = await InternetAddress.lookup('firestore.googleapis.com')
+          .timeout(const Duration(seconds: 5));
+      ok = r.isNotEmpty && r.first.rawAddress.isNotEmpty;
+    } catch (_) {
+      ok = false;
+    }
+    if (ok == online) return;
+    online = ok;
+    notifyListeners();
+    // رجع الإنترنت: نرفع اللي تجمع بدون اتصال.
+    if (ok) unawaited(Cloud.instance.syncNow());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 }
 
 /// Firestore للوثائق وStorage للصور:
