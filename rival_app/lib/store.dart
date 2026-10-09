@@ -415,7 +415,7 @@ class Store extends ChangeNotifier {
 
   Future<void> deleteDoctor(Doctor d) async {
     doctors.remove(d);
-    for (final f in [d.photo, d.signature, d.stamp]) {
+    for (final f in [d.photo, d.signature, d.stamp, d.portrait]) {
       if (f != null) _deleteFile(f);
     }
     if (clinic.activeDoctorId == d.id) clinic.activeDoctorId = null;

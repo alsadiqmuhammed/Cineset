@@ -21,7 +21,6 @@ class SectionPicker extends StatelessWidget {
   Widget build(BuildContext context) {
     final b = context.brand;
     return Scaffold(
-      backgroundColor: b.bg,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),

@@ -66,45 +66,85 @@ class Brand extends ThemeExtension<Brand> {
   /// النسخة الفاتحة (للتصدير والتقارير: دايماً بألوان الهوية الأصلية).
   Brand get day => Brand.of(section);
 
-  // ---------- النعومة البارزة (Soft UI) ----------
+  // ---------- الزجاج الناعم ----------
 
-  /// لون الظل الغامق والفاتح: مشتقين من خلفية القسم حتى يبين البروز طبيعي.
+  /// لون الظل: مشتق من القسم حتى يبين دافي ومو رمادي.
   Color get shadeDark => isDark
-      ? const Color(0xFF000000).withValues(alpha: 0.55)
+      ? const Color(0xFF000000).withValues(alpha: 0.45)
       : (section == Section.dental
-            ? const Color(0xFF8C7D69).withValues(alpha: 0.32)
-            : const Color(0xFF8C645F).withValues(alpha: 0.30));
+            ? const Color(0xFF8C644F).withValues(alpha: 0.16)
+            : const Color(0xFF8C5A5F).withValues(alpha: 0.17));
   Color get shadeLight => isDark
-      ? const Color(0xFFFFFFFF).withValues(alpha: 0.045)
+      ? const Color(0xFFFFFFFF).withValues(alpha: 0.08)
       : const Color(0xFFFFFFFF).withValues(alpha: 0.95);
 
-  /// بارز: ظل غامق تحت ولمعة فوق.
+  /// تعبئة البطاقات الزجاجية (شفافة فوق خلفية الصفحة المتدرجة).
+  Color get glass => isDark
+      ? const Color(0xFFFFFFFF).withValues(alpha: 0.055)
+      : const Color(0xFFFFFFFF).withValues(alpha: 0.62);
+
+  /// حافة الزجاج اللامعة.
+  Color get glassEdge => isDark
+      ? const Color(0xFFFFFFFF).withValues(alpha: 0.09)
+      : const Color(0xFFFFFFFF).withValues(alpha: 0.95);
+
+  /// بارز: ظل ناعم ودافي تحت البطاقة.
   List<BoxShadow> raised([double depth = 1]) => [
     BoxShadow(
       color: shadeDark,
-      blurRadius: 18 * depth,
-      offset: Offset(7 * depth, 7 * depth),
-    ),
-    BoxShadow(
-      color: shadeLight,
-      blurRadius: 18 * depth,
-      offset: Offset(-7 * depth, -7 * depth),
+      blurRadius: 26 * depth,
+      offset: Offset(0, 10 * depth),
     ),
   ];
 
-  /// محفور (مضغوط لجوه): تدرّج من الظل للمعة.
+  /// مجرى غاطس (التبويبات والحقول): زجاج أخف.
   Gradient get pressed => LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [
-      Color.alphaBlend(shadeDark.withValues(alpha: isDark ? 0.5 : 0.16), bg),
-      Color.alphaBlend(shadeLight.withValues(alpha: isDark ? 0.06 : 0.6), bg),
-    ],
+    colors: isDark
+        ? [
+            const Color(0xFF000000).withValues(alpha: 0.28),
+            const Color(0xFFFFFFFF).withValues(alpha: 0.03),
+          ]
+        : [
+            Color.alphaBlend(primary.withValues(alpha: 0.05), bg),
+            const Color(0xFFFFFFFF).withValues(alpha: 0.45),
+          ],
   );
 
-  /// لون حقول الإدخال (محفورة شوية).
-  Color get well =>
-      Color.alphaBlend(shadeDark.withValues(alpha: isDark ? 0.35 : 0.10), bg);
+  /// لون حقول الإدخال.
+  Color get well => isDark
+      ? const Color(0xFFFFFFFF).withValues(alpha: 0.06)
+      : const Color(0xFFFFFFFF).withValues(alpha: 0.7);
+
+  /// تدرّج الأزرار والبطاقات الملونة (بلون الهوية الأصلي حتى بالليلي).
+  Gradient get action => LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: section == Section.dental
+        ? const [Color(0xFFE04A28), Color(0xFFA82E12)]
+        : const [Color(0xFF8E2D3F), Color(0xFF5A0E1E)],
+  );
+
+  /// ظل ملوّن تحت الأزرار المتدرجة.
+  List<BoxShadow> get actionShadow => [
+    BoxShadow(
+      color: day.primaryDeep.withValues(alpha: isDark ? 0.5 : 0.32),
+      blurRadius: 24,
+      offset: const Offset(0, 12),
+    ),
+  ];
+
+  /// خلفية الصفحات: تدرّج دافي ويا توهج شامبين بالزاوية.
+  List<Color> get pageColors => isDark
+      ? [
+          Color.alphaBlend(primary.withValues(alpha: 0.06), bg),
+          bg,
+          Color.alphaBlend(const Color(0xFF000000).withValues(alpha: 0.25), bg),
+        ]
+      : section == Section.dental
+      ? const [Color(0xFFFCF7F2), Color(0xFFF7EDE6), Color(0xFFF2E2D6)]
+      : const [Color(0xFFFBF6F2), Color(0xFFF6EEE8), Color(0xFFF0DFDA)];
 
   /// الأزرار والتحية تتبدل حسب القسم (بيوتي بصيغة المؤنث).
   String f(String masc, String fem) => feminine ? fem : masc;
@@ -134,14 +174,18 @@ class Brand extends ThemeExtension<Brand> {
       fontFamily: kFontUi,
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
-          TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
+          TargetPlatform.android: GlassPageTransitionsBuilder(),
+          TargetPlatform.iOS: GlassPageTransitionsBuilder(),
+          TargetPlatform.linux: GlassPageTransitionsBuilder(),
         },
       ),
       colorScheme: scheme,
-      scaffoldBackgroundColor: bg,
+      // الصفحات شفافة: الخلفية المتدرجة تنرسم ويا انتقال كل صفحة.
+      scaffoldBackgroundColor: Colors.transparent,
       extensions: [this],
       appBarTheme: AppBarTheme(
-        backgroundColor: bg,
+        backgroundColor: Colors.transparent,
+        scrolledUnderElevation: 0,
         foregroundColor: text,
         surfaceTintColor: Colors.transparent,
         centerTitle: true,
@@ -176,6 +220,8 @@ class Brand extends ThemeExtension<Brand> {
           borderSide: BorderSide(color: primary, width: 1.5),
         ),
       ),
+      cardColor: card,
+      canvasColor: card,
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           textStyle: const TextStyle(
@@ -183,15 +229,20 @@ class Brand extends ThemeExtension<Brand> {
             fontWeight: FontWeight.w800,
             fontSize: 15,
           ),
-          shape: const StadiumBorder(),
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: primaryDeep,
-          side: BorderSide(color: line),
-          shape: const StadiumBorder(),
+          side: BorderSide(color: glassEdge),
+          backgroundColor: glass,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
           textStyle: const TextStyle(
             fontFamily: kFontUi,
             fontWeight: FontWeight.w700,
@@ -200,13 +251,11 @@ class Brand extends ThemeExtension<Brand> {
         ),
       ),
       chipTheme: ChipThemeData(
-        backgroundColor: bg,
+        backgroundColor: glass,
         selectedColor: primary.withValues(alpha: isDark ? 0.3 : 0.14),
-        side: BorderSide(
-          color: isDark ? line : shadeDark.withValues(alpha: 0.18),
-        ),
+        side: BorderSide(color: glassEdge),
         labelStyle: TextStyle(fontFamily: kFontUi, color: text),
-        shape: const StadiumBorder(),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: card,
@@ -229,8 +278,11 @@ class Brand extends ThemeExtension<Brand> {
         ),
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
-        backgroundColor: primary,
+        backgroundColor: day.primary,
         foregroundColor: Colors.white,
+        elevation: 4,
+        highlightElevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         extendedTextStyle: const TextStyle(
           fontFamily: kFontUi,
           fontWeight: FontWeight.w800,
@@ -560,4 +612,72 @@ int? parseAmount(String s) {
 String arDate(int ms) {
   final d = DateTime.fromMillisecondsSinceEpoch(ms);
   return '${ar(d.day)} ${arMonths[d.month - 1]} ${ar(d.year)}';
+}
+
+/// انتقال الصفحات: نفس الحركة الناعمة، وكل صفحة ترسم خلفيتها المتدرجة
+/// (الـ Scaffold شفاف حتى تبين البطاقات الزجاجية فوقها).
+class GlassPageTransitionsBuilder extends PageTransitionsBuilder {
+  const GlassPageTransitionsBuilder();
+
+  static const _inner = FadeForwardsPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) => _inner.buildTransitions(
+    route,
+    context,
+    animation,
+    secondaryAnimation,
+    GlassBackdrop(child: child),
+  );
+}
+
+/// الخلفية المتدرجة ويا توهجين ناعمين.
+class GlassBackdrop extends StatelessWidget {
+  final Widget child;
+  const GlassBackdrop({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final b = Theme.of(context).extension<Brand>() ?? dental;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: b.pageColors,
+        ),
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: RadialGradient(
+            center: const Alignment(1, -1),
+            radius: 1.1,
+            colors: [
+              b.accent.withValues(alpha: b.isDark ? 0.10 : 0.30),
+              b.accent.withValues(alpha: 0),
+            ],
+          ),
+        ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              center: const Alignment(-1, 1.05),
+              radius: 1.0,
+              colors: [
+                b.day.primary.withValues(alpha: b.isDark ? 0.12 : 0.10),
+                b.day.primary.withValues(alpha: 0),
+              ],
+            ),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
 }

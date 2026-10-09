@@ -28,6 +28,7 @@ class _DoctorEditScreenState extends State<DoctorEditScreen> {
   String? _photo;
   late String? _signature = _d.signature;
   late String? _stamp = _d.stamp;
+  late String? _portrait = _d.portrait;
 
   @override
   void initState() {
@@ -72,6 +73,7 @@ class _DoctorEditScreenState extends State<DoctorEditScreen> {
       (_d.photo, _photo),
       (_d.signature, _signature),
       (_d.stamp, _stamp),
+      (_d.portrait, _portrait),
     ]) {
       if (old != null && old != now) evictImage(old);
     }
@@ -82,7 +84,8 @@ class _DoctorEditScreenState extends State<DoctorEditScreen> {
       ..bio = _bio.text.trim()
       ..photo = _photo
       ..signature = _signature
-      ..stamp = _stamp;
+      ..stamp = _stamp
+      ..portrait = _portrait;
     _d.services
       ..clear()
       ..addAll(
@@ -193,6 +196,28 @@ class _DoctorEditScreenState extends State<DoctorEditScreen> {
           ),
           const SizedBox(height: 18),
           Text(
+            'صورة بطاقة الطبيب',
+            style: TextStyle(color: b.muted, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'صورة PNG مقصوصة بدون خلفية (من الصدر وفوق). تطلع بارزة ببطاقة الطبيب وبملفه.',
+            style: TextStyle(color: b.muted, fontSize: 12, height: 1.5),
+          ),
+          const SizedBox(height: 8),
+          _PngTile(
+            label: 'الصورة المقصوصة',
+            hint: 'PNG شفاف',
+            path: _portrait,
+            height: 170,
+            onPick: () async {
+              final p = await _pickPng();
+              if (p != null) setState(() => _portrait = p);
+            },
+            onClear: () => setState(() => _portrait = null),
+          ),
+          const SizedBox(height: 18),
+          Text(
             'للتصاميم والتقارير',
             style: TextStyle(color: b.muted, fontWeight: FontWeight.w700),
           ),
@@ -239,12 +264,14 @@ class _PngTile extends StatelessWidget {
   final String label, hint;
   final String? path;
   final VoidCallback onPick, onClear;
+  final double height;
   const _PngTile({
     required this.label,
     required this.hint,
     required this.path,
     required this.onPick,
     required this.onClear,
+    this.height = 96,
   });
 
   @override
@@ -256,7 +283,7 @@ class _PngTile extends StatelessWidget {
           onTap: onPick,
           borderRadius: BorderRadius.circular(14),
           child: Container(
-            height: 96,
+            height: height,
             decoration: BoxDecoration(
               color: b.card,
               borderRadius: BorderRadius.circular(14),

@@ -360,6 +360,9 @@ class Doctor {
 
   /// صورة خاصة بالطبيب (ختم أو شعار شخصي) تنحط على التصاميم وبالتقرير.
   String? stamp;
+
+  /// صورة الطبيب مقصوصة بدون خلفية (PNG شفاف) تطلع بارزة ببطاقته.
+  String? portrait;
   final List<String> services;
 
   Doctor({
@@ -371,6 +374,7 @@ class Doctor {
     this.photo,
     this.signature,
     this.stamp,
+    this.portrait,
     List<String>? services,
   }) : services = services ?? [];
 
@@ -382,6 +386,7 @@ class Doctor {
     photo = o.photo;
     signature = o.signature;
     stamp = o.stamp;
+    portrait = o.portrait;
     services
       ..clear()
       ..addAll(o.services);
@@ -402,6 +407,7 @@ class Doctor {
     if (photo != null) 'photo': photo,
     if (signature != null) 'signature': signature,
     if (stamp != null) 'stamp': stamp,
+    if (portrait != null) 'portrait': portrait,
     'services': services,
   };
 
@@ -414,6 +420,7 @@ class Doctor {
     photo: j['photo'] as String?,
     signature: j['signature'] as String?,
     stamp: j['stamp'] as String?,
+    portrait: j['portrait'] as String?,
     services: [for (final s in (j['services'] as List? ?? [])) s as String],
   );
 }

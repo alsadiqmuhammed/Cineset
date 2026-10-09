@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../brand.dart';
 import '../cloud.dart';
 import '../store.dart';
+import 'common.dart';
 
 /// الدخول لقاعدة البيانات الموحدة بحساب العيادة.
 /// كل الأجهزة اللي تدخل بحسابات العيادة تشوف نفس المراجعين والحالات والصور.
@@ -67,13 +68,18 @@ class _LoginScreenState extends State<LoginScreen> {
     final b = context.brand;
     final ink = b.text, soft = b.muted;
     return Scaffold(
-      backgroundColor: b.bg,
-      appBar: widget.fromSettings ? AppBar(backgroundColor: b.bg) : null,
+      appBar: widget.fromSettings ? AppBar() : null,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(24, 36, 24, 24),
           children: [
-            Center(child: Image.asset('assets/brand/symbol.png', height: 84)),
+            const Center(
+              child: GlossyEmblem(
+                section: Section.dental,
+                size: 170,
+                shield: true,
+              ),
+            ),
             const SizedBox(height: 22),
             Text(
               'حساب العيادة',

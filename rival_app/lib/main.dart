@@ -219,7 +219,7 @@ class _NeuNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final b = context.brand;
     return ColoredBox(
-      color: b.bg,
+      color: Colors.transparent,
       child: SafeArea(
         top: false,
         child: Container(
@@ -227,9 +227,12 @@ class _NeuNavBar extends StatelessWidget {
           margin: const EdgeInsets.fromLTRB(14, 4, 14, 12),
           padding: const EdgeInsets.symmetric(horizontal: 6),
           decoration: BoxDecoration(
-            color: b.bg,
+            color: b.isDark
+                ? Color.alphaBlend(const Color(0x14FFFFFF), b.card)
+                : const Color(0xD9FFFFFF),
             borderRadius: BorderRadius.circular(26),
-            boxShadow: b.raised(0.85),
+            border: Border.all(color: b.glassEdge),
+            boxShadow: b.raised(0.9),
           ),
           child: Row(
             children: [
@@ -273,10 +276,12 @@ class _NavItem extends StatelessWidget {
         AnimatedContainer(
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOutCubic,
-          width: on ? 50 : 40,
+          width: on ? 52 : 40,
           height: 34,
           decoration: BoxDecoration(
-            gradient: on ? b.pressed : null,
+            color: on
+                ? b.primary.withValues(alpha: b.isDark ? 0.22 : 0.1)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(14),
           ),
           child: AnimatedScale(

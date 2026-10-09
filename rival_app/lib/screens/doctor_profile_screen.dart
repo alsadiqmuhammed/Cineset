@@ -67,69 +67,107 @@ class DoctorProfileScreen extends StatelessWidget {
                     decoration: BoxDecoration(gradient: b.heroGradient),
                     child: CustomPaint(
                       painter: RingsPainter(b.accent),
-                      child: SafeArea(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 56, 20, 20),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Pill(
-                                b.f('طبيبك', 'طبيبتچ'),
-                                bg: b.accent,
-                                fg: b.dark,
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                'تعرّف على',
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.9),
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              Text(
-                                doctor.name,
-                                style: TextStyle(
-                                  color: b.accent,
-                                  fontFamily: b.feminine
-                                      ? kFontAccent
-                                      : kFontUi,
-                                  fontSize: b.feminine ? 30 : 26,
-                                  fontWeight: FontWeight.w800,
-                                  height: 1.3,
-                                ),
-                              ),
-                              const Spacer(),
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: b.accent,
-                                        width: 2,
-                                      ),
-                                    ),
-                                    padding: const EdgeInsets.all(3),
-                                    child: DoctorAvatar(doctor, size: 92),
+                      child: Stack(
+                        children: [
+                          if (doctor.portrait != null)
+                            PositionedDirectional(
+                              end: 4,
+                              bottom: 0,
+                              height: 262,
+                              width: 200,
+                              child: TweenAnimationBuilder<double>(
+                                tween: Tween(begin: 0, end: 1),
+                                duration: const Duration(milliseconds: 700),
+                                curve: Curves.easeOutCubic,
+                                builder: (_, v, child) => Opacity(
+                                  opacity: v,
+                                  child: Transform.translate(
+                                    offset: Offset(0, 30 * (1 - v)),
+                                    child: child,
                                   ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Text(
-                                      doctor.specialty,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w700,
+                                ),
+                                child: Image.file(
+                                  File(doctor.portrait!),
+                                  fit: BoxFit.contain,
+                                  alignment: Alignment.bottomCenter,
+                                  errorBuilder: (_, _, _) => const SizedBox(),
+                                ),
+                              ),
+                            ),
+                          SafeArea(
+                            child: Padding(
+                              padding: EdgeInsetsDirectional.fromSTEB(
+                                20,
+                                56,
+                                doctor.portrait != null ? 190 : 20,
+                                20,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Pill(
+                                    b.f('طبيبك', 'طبيبتچ'),
+                                    bg: b.accent,
+                                    fg: b.dark,
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    'تعرّف على',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.9,
                                       ),
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w800,
                                     ),
+                                  ),
+                                  Text(
+                                    doctor.name,
+                                    style: TextStyle(
+                                      color: b.accent,
+                                      fontFamily: b.feminine
+                                          ? kFontAccent
+                                          : kFontUi,
+                                      fontSize: b.feminine ? 30 : 26,
+                                      fontWeight: FontWeight.w800,
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      if (doctor.portrait == null) ...[
+                                        Container(
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: b.accent,
+                                              width: 2,
+                                            ),
+                                          ),
+                                          padding: const EdgeInsets.all(3),
+                                          child: DoctorAvatar(doctor, size: 92),
+                                        ),
+                                        const SizedBox(width: 14),
+                                      ],
+                                      Expanded(
+                                        child: Text(
+                                          doctor.specialty,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
-                            ],
+                            ),
                           ),
-                        ),
+                        ],
                       ),
                     ),
                   ),

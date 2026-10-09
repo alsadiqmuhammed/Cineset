@@ -179,7 +179,7 @@ class DashboardScreen extends StatelessWidget {
                           height: 52,
                           padding: EdgeInsets.all(doc?.photo == null ? 8 : 4),
                           decoration: BoxDecoration(
-                            color: b.bg,
+                            color: b.glass,
                             borderRadius: BorderRadius.circular(18),
                             boxShadow: b.raised(0.6),
                           ),
@@ -197,7 +197,72 @@ class DashboardScreen extends StatelessWidget {
                     const SizedBox(height: 18),
                     const SectionTabs(),
                   ],
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 18),
+                  _SearchField(onTap: () => onGo(1)),
+                  const SizedBox(height: 18),
+                  _NextCard(
+                    nextUp,
+                    today: today,
+                    onNew: () => _newPatient(context),
+                  ),
+                  if (births.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    for (final (p, d) in births.take(2)) ...[
+                      BirthdayTile(p, d),
+                      const SizedBox(height: 10),
+                    ],
+                  ],
+                  SectionHeader('إجراءات سريعة'),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: NeuButton(
+                          icon: Icons.person_add_alt_1_outlined,
+                          label: b.f('مراجع جديد', 'مراجعة جديدة'),
+                          accent: true,
+                          onTap: () => _newPatient(context),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: NeuButton(
+                          icon: Icons.event_note_outlined,
+                          label: 'المواعيد',
+                          tint: b.day.primary,
+                          onTap: () => onGo(2),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: NeuButton(
+                          icon: Icons.badge_outlined,
+                          label: 'الأطباء',
+                          tint: const Color(0xFFB08347),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const DoctorsScreen(),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: NeuButton(
+                          icon: Icons.auto_awesome_outlined,
+                          label: 'القوالب',
+                          tint: b.isDark ? b.accent : b.text,
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const OverlaysScreen(),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
                   BrandCard(
                     radius: 32,
                     padding: const EdgeInsets.all(20),
@@ -268,64 +333,6 @@ class DashboardScreen extends StatelessWidget {
                         ),
                       ],
                     ),
-                  ),
-                  if (nextUp != null) ...[
-                    const SizedBox(height: 20),
-                    _NextCard(nextUp.$1, nextUp.$2, today: today),
-                  ],
-                  if (births.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    for (final (p, d) in births.take(2)) ...[
-                      BirthdayTile(p, d),
-                      const SizedBox(height: 10),
-                    ],
-                  ],
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: NeuButton(
-                          icon: Icons.person_add_alt_1_outlined,
-                          label: b.f('مراجع جديد', 'مراجعة جديدة'),
-                          accent: true,
-                          onTap: () => _newPatient(context),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: NeuButton(
-                          icon: Icons.event_note_outlined,
-                          label: 'المواعيد',
-                          onTap: () => onGo(2),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: NeuButton(
-                          icon: Icons.badge_outlined,
-                          label: 'الأطباء',
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const DoctorsScreen(),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: NeuButton(
-                          icon: Icons.auto_awesome_outlined,
-                          label: 'القوالب',
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const OverlaysScreen(),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                   if (upcoming.where((e) => e != nextUp).isNotEmpty) ...[
                     SectionHeader(
@@ -440,152 +447,10 @@ class _Figure extends StatelessWidget {
   }
 }
 
-/// الموعد الجاي: الساعة بمربع أحمر، كم باقي، وتذكير واتساب.
-class _NextCard extends StatelessWidget {
-  final Patient p;
-  final CaseRecord c;
-  final DateTime today;
-  const _NextCard(this.p, this.c, {required this.today});
-
-  @override
-  Widget build(BuildContext context) {
-    final b = context.brand;
-    final d = DateTime.fromMillisecondsSinceEpoch(c.nextVisit!);
-    final timed = d.hour != 0 || d.minute != 0;
-    final days = DateTime(d.year, d.month, d.day).difference(today).inDays;
-    final mins = d.difference(DateTime.now()).inMinutes;
-    final left = days == 0 && timed && mins >= 0
-        ? (mins < 60
-              ? 'بعد ${ar(mins)} دقيقة'
-              : 'بعد ${ar(mins ~/ 60)} ساعة${mins % 60 == 0 ? '' : ' و${ar(mins % 60)} د'}')
-        : days == 0
-        ? 'اليوم'
-        : days == 1
-        ? 'باچر'
-        : 'بعد ${ar(days)} يوم';
-    final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
-    return BrandCard(
-      radius: 26,
-      padding: const EdgeInsets.all(14),
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => CaseScreen(patient: p, record: c),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 62,
-            height: 62,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [b.day.primary, b.day.primaryDeep],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: b.day.primary.withValues(alpha: 0.35),
-                  blurRadius: 14,
-                  offset: const Offset(4, 6),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: timed
-                  ? [
-                      Text(
-                        '${ar(h)}:${ar(d.minute.toString().padLeft(2, '0'))}',
-                        style: const TextStyle(
-                          color: Color(0xFFFFF6F0),
-                          fontWeight: FontWeight.w800,
-                          fontSize: 17,
-                          height: 1.1,
-                        ),
-                      ),
-                      Text(
-                        d.hour < 12 ? 'صباحاً' : 'مساءً',
-                        style: const TextStyle(
-                          color: Color(0xFFFFF6F0),
-                          fontSize: 10,
-                        ),
-                      ),
-                    ]
-                  : [
-                      Text(
-                        ar(d.day),
-                        style: const TextStyle(
-                          color: Color(0xFFFFF6F0),
-                          fontWeight: FontWeight.w800,
-                          fontSize: 20,
-                          height: 1.1,
-                        ),
-                      ),
-                      Text(
-                        arMonths[d.month - 1],
-                        maxLines: 1,
-                        style: const TextStyle(
-                          color: Color(0xFFFFF6F0),
-                          fontSize: 9.5,
-                        ),
-                      ),
-                    ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'الموعد الجاي · $left',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: b.isDark ? b.accent : const Color(0xFF9B7440),
-                  ),
-                ),
-                Text(
-                  p.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: b.text,
-                  ),
-                ),
-                Text(
-                  c.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: b.muted),
-                ),
-              ],
-            ),
-          ),
-          if (p.phone.trim().isNotEmpty)
-            _RoundIcon(
-              Icons.chat_outlined,
-              const Color(0xFF2E7D4F),
-              () => openWhatsApp(p.phone, text: reminderText(b, p, c)),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RoundIcon extends StatelessWidget {
-  final IconData icon;
-  final Color color;
+/// خانة بحث (تفتح قائمة المراجعين).
+class _SearchField extends StatelessWidget {
   final VoidCallback onTap;
-  const _RoundIcon(this.icon, this.color, this.onTap);
+  const _SearchField({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -593,17 +458,222 @@ class _RoundIcon extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 46,
-        height: 46,
+        height: 50,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
-          color: b.bg,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: b.raised(0.45),
+          color: b.glass,
+          borderRadius: BorderRadius.circular(17),
+          border: Border.all(color: b.glassEdge),
+          boxShadow: b.raised(0.4),
         ),
-        child: Icon(icon, color: color, size: 21),
+        child: Row(
+          children: [
+            Icon(Icons.search_rounded, color: b.muted, size: 21),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                b.f('ابحث عن مراجع أو حالة…', 'ابحثي عن مراجعة أو جلسة…'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: b.muted, fontSize: 13.5),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+}
+
+/// بطاقة الموعد الجاي الملونة ويا الرسمة اللمّاعة.
+class _NextCard extends StatelessWidget {
+  final (Patient, CaseRecord)? next;
+  final DateTime today;
+  final VoidCallback onNew;
+  const _NextCard(this.next, {required this.today, required this.onNew});
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    const ink = Color(0xFFFFF6F0);
+    final soft = ink.withValues(alpha: 0.82);
+    final e = next;
+    String? when, left;
+    if (e != null) {
+      final d = DateTime.fromMillisecondsSinceEpoch(e.$2.nextVisit!);
+      final timed = d.hour != 0 || d.minute != 0;
+      final days = DateTime(d.year, d.month, d.day).difference(today).inDays;
+      final mins = d.difference(DateTime.now()).inMinutes;
+      left = days == 0 && timed && mins >= 0
+          ? (mins < 60
+                ? 'بعد ${ar(mins)} دقيقة'
+                : 'بعد ${ar(mins ~/ 60)} ساعة${mins % 60 == 0 ? '' : ' و${ar(mins % 60)} د'}')
+          : days == 0
+          ? 'اليوم'
+          : days == 1
+          ? 'باچر'
+          : 'بعد ${ar(days)} يوم';
+      when = [
+        days == 0
+            ? 'اليوم'
+            : days == 1
+            ? 'باچر'
+            : arDate(e.$2.nextVisit!),
+        if (timed) arTime(d),
+      ].join(' · ');
+    }
+    return GestureDetector(
+      onTap: e == null
+          ? null
+          : () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CaseScreen(patient: e.$1, record: e.$2),
+              ),
+            ),
+      child: Container(
+        height: 184,
+        decoration: BoxDecoration(
+          gradient: b.action,
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: b.actionShadow,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          children: [
+            PositionedDirectional(
+              end: -50,
+              top: -60,
+              child: Container(
+                width: 220,
+                height: 220,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [Color(0x47FFFFFF), Color(0x00FFFFFF)],
+                  ),
+                ),
+              ),
+            ),
+            PositionedDirectional(
+              end: 10,
+              top: 16,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: const Duration(milliseconds: 900),
+                curve: Curves.easeOutBack,
+                builder: (_, v, child) => Transform.translate(
+                  offset: Offset(0, 14 * (1 - v)),
+                  child: Opacity(opacity: v.clamp(0, 1), child: child),
+                ),
+                child: GlossyEmblem(
+                  section: b.section,
+                  size: 124,
+                  onColor: true,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(18, 18, 150, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    e == null ? 'ماكو مواعيد قريبة' : 'الموعد الجاي · $left',
+                    style: TextStyle(color: soft, fontSize: 11.5),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    e == null ? b.f('يومك هادئ', 'يومج هادئ') : e.$1.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: ink,
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    e == null
+                        ? b.f(
+                            'سجّل مراجع جديد أو حدد موعد',
+                            'سجّلي مراجعة جديدة أو حددي موعد',
+                          )
+                        : e.$2.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: soft, fontSize: 12.5),
+                  ),
+                  if (when != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      when,
+                      style: const TextStyle(color: ink, fontSize: 12.5),
+                    ),
+                  ],
+                  const Spacer(),
+                  Row(
+                    children: [
+                      if (e == null)
+                        _GlassChip('ابدأ', Icons.add, onNew)
+                      else if (e.$1.phone.trim().isNotEmpty)
+                        _GlassChip(
+                          b.f('ذكّره بالواتساب', 'ذكّريها بالواتساب'),
+                          Icons.chat_outlined,
+                          () => openWhatsApp(
+                            e.$1.phone,
+                            text: reminderText(b, e.$1, e.$2),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GlassChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  const _GlassChip(this.label, this.icon, this.onTap);
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: const Color(0x33FFFFFF),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(13),
+      side: const BorderSide(color: Color(0x59FFFFFF)),
+    ),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(13),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: const Color(0xFFFFF6F0)),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFFFFF6F0),
+                fontWeight: FontWeight.w700,
+                fontSize: 12.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _ActiveCard extends StatelessWidget {

@@ -687,7 +687,7 @@ class _DayChip extends StatelessWidget {
           curve: Curves.easeOutCubic,
           width: 60,
           decoration: BoxDecoration(
-            color: selected ? null : b.bg,
+            color: selected ? null : b.glass,
             gradient: selected
                 ? LinearGradient(
                     begin: Alignment.topLeft,

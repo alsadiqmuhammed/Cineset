@@ -358,7 +358,7 @@ class _AppearanceCard extends StatelessWidget {
                     curve: Curves.easeOutCubic,
                     height: 74,
                     decoration: BoxDecoration(
-                      color: look == key ? null : b.bg,
+                      color: look == key ? null : b.glass,
                       gradient: look == key ? b.pressed : null,
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: look == key ? const [] : b.raised(0.55),
