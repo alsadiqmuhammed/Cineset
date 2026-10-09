@@ -4,6 +4,7 @@ import '../brand.dart';
 import '../report_pdf.dart';
 import '../stats.dart';
 import '../store.dart';
+import 'case_screen.dart';
 import 'common.dart';
 import 'doctor_profile_screen.dart';
 
@@ -101,7 +102,85 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ),
                 ],
               ),
-              SectionHeader('آخر ٦ أشهر'),
+              SectionHeader('الحسابات'),
+              Row(
+                children: [
+                  Expanded(
+                    child: StatTile(
+                      money(s.income),
+                      'واردات ${_period.label}',
+                      Icons.payments_outlined,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: StatTile(
+                      money(s.outstanding),
+                      'بذمة ${b.patients}',
+                      Icons.account_balance_wallet_outlined,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              BrandCard(
+                child: _MonthlyChart(
+                  Stats.of(store, doctorId: _doctorId).monthlyIncome(6),
+                  format: _short,
+                ),
+              ),
+              if (_doctorId == null && s.incomeByDoctor.length > 1) ...[
+                const SizedBox(height: 10),
+                BrandCard(
+                  child: Column(
+                    children: [
+                      for (final e in s.incomeByDoctor.entries)
+                        BarRow(
+                          label: e.key,
+                          value: e.value,
+                          max: s.incomeByDoctor.values.first,
+                          format: money,
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+              if (s.owing.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                BrandCard(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Column(
+                    children: [
+                      for (final (p, c) in s.owing.take(6))
+                        ListTile(
+                          dense: true,
+                          title: Text(
+                            p.name,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          subtitle: Text(
+                            '${c.title} · دفع ${money(c.paid)} من ${money(c.price!)}',
+                            style: TextStyle(color: b.muted, fontSize: 12),
+                          ),
+                          trailing: Text(
+                            money(c.due!),
+                            style: const TextStyle(
+                              color: Color(0xFFC62828),
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => CaseScreen(patient: p, record: c),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+              SectionHeader('الحالات آخر ٦ أشهر'),
               BrandCard(child: _MonthlyChart(monthly)),
               if (s.byTreatment.isNotEmpty) ...[
                 SectionHeader(b.teethChart ? 'حسب العلاج' : 'حسب الجلسة'),
@@ -171,9 +250,20 @@ class _Bars extends StatelessWidget {
   }
 }
 
+/// مبلغ مختصر للأعمدة: ١٫٢ م، ٢٥٠ ألف.
+String _short(int v) {
+  if (v >= 1000000) {
+    final m = (v / 100000).round() / 10;
+    return '${ar(m % 1 == 0 ? m.toInt() : m).replaceAll('.', '٫')} م';
+  }
+  if (v >= 1000) return '${ar((v / 1000).round())} ألف';
+  return ar(v);
+}
+
 class _MonthlyChart extends StatelessWidget {
   final List<(int, int, int)> months;
-  const _MonthlyChart(this.months);
+  final String Function(int)? format;
+  const _MonthlyChart(this.months, {this.format});
 
   @override
   Widget build(BuildContext context) {
@@ -191,12 +281,16 @@ class _MonthlyChart extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Text(
-                      ar(count),
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: b.text,
-                        fontSize: 12,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        format?.call(count) ?? ar(count),
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: b.text,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 4),

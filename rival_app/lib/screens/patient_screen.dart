@@ -17,10 +17,23 @@ String internationalPhone(String phone) {
   return digits;
 }
 
-Future<void> openWhatsApp(String phone) => launchUrl(
-  Uri.parse('https://wa.me/${internationalPhone(phone)}'),
+Future<void> openWhatsApp(String phone, {String? text}) => launchUrl(
+  Uri.parse(
+    'https://wa.me/${internationalPhone(phone)}'
+    '${text == null ? '' : '?text=${Uri.encodeComponent(text)}'}',
+  ),
   mode: LaunchMode.externalApplication,
 );
+
+/// رسالة تذكير بالموعد جاهزة للواتساب.
+String reminderText(Brand b, Patient p, CaseRecord c) {
+  final first = p.name.split(' ').first;
+  final when = arDateTime(c.nextVisit!);
+  return 'مرحباً $first 🌸\n'
+      'نذكّرك بموعد ${b.f('مراجعتك', 'جلستك')} بـ${b.name} يوم $when.\n'
+      '${Store.instance.clinic.address.isEmpty ? '' : '📍 ${Store.instance.clinic.address}\n'}'
+      'إذا تحتاج تأجيل الموعد راسلنا هنا. ننتظرك 🤍';
+}
 
 Future<void> callPhone(String phone) =>
     launchUrl(Uri.parse('tel:${phone.replaceAll(' ', '')}'));

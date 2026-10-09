@@ -11,6 +11,8 @@ import '../report_pdf.dart';
 import '../store.dart';
 import 'common.dart';
 import 'compose_screen.dart';
+import 'money.dart';
+import 'patient_screen.dart' show openWhatsApp, reminderText;
 import 'points_editor.dart';
 import 'teeth_chart.dart';
 import 'video_screen.dart';
@@ -398,6 +400,20 @@ class _CaseScreenState extends State<CaseScreen> {
                   ),
                 ),
               ],
+              SectionHeader(
+                'الحساب',
+                trailing: (c.due ?? 0) > 0
+                    ? Text(
+                        'متبقي ${money(c.due!)}',
+                        style: const TextStyle(
+                          color: Color(0xFFC62828),
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                        ),
+                      )
+                    : null,
+              ),
+              CaseMoneyCard(record: c, onChanged: _save),
               SectionHeader(b.f('المراجعة القادمة', 'الجلسة القادمة')),
               BrandCard(
                 padding: const EdgeInsets.symmetric(
@@ -410,7 +426,9 @@ class _CaseScreenState extends State<CaseScreen> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        c.nextVisit == null ? 'ما محدد' : arDate(c.nextVisit!),
+                        c.nextVisit == null
+                            ? 'ما محدد'
+                            : arDateTime(c.nextVisit!),
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
                           color: c.nextVisit == null ? b.muted : b.text,
@@ -430,12 +448,40 @@ class _CaseScreenState extends State<CaseScreen> {
                           firstDate: DateTime(now.year - 1),
                           lastDate: DateTime(now.year + 3),
                         );
-                        if (d == null) return;
-                        c.nextVisit = d.millisecondsSinceEpoch;
+                        if (d == null || !context.mounted) return;
+                        final old = c.nextVisit == null
+                            ? null
+                            : DateTime.fromMillisecondsSinceEpoch(c.nextVisit!);
+                        final t = await showTimePicker(
+                          context: context,
+                          helpText: 'الساعة (اختياري)',
+                          cancelText: 'بدون ساعة',
+                          initialTime:
+                              old == null || (old.hour == 0 && old.minute == 0)
+                              ? const TimeOfDay(hour: 17, minute: 0)
+                              : TimeOfDay.fromDateTime(old),
+                        );
+                        c.nextVisit = DateTime(
+                          d.year,
+                          d.month,
+                          d.day,
+                          t?.hour ?? 0,
+                          t?.minute ?? 0,
+                        ).millisecondsSinceEpoch;
                         _save();
                       },
                       child: Text(c.nextVisit == null ? 'حدد موعد' : 'غيّر'),
                     ),
+                    if (c.nextVisit != null &&
+                        widget.patient.phone.trim().isNotEmpty)
+                      IconButton(
+                        tooltip: 'ذكّر بالواتساب',
+                        onPressed: () => openWhatsApp(
+                          widget.patient.phone,
+                          text: reminderText(b, widget.patient, c),
+                        ),
+                        icon: Icon(Icons.chat, size: 20, color: b.primary),
+                      ),
                     if (c.nextVisit != null)
                       IconButton(
                         tooltip: 'شيل الموعد',

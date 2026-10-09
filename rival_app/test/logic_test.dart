@@ -242,4 +242,92 @@ void main() {
       expect(all.monthly(3, now: now).map((m) => m.$3), [0, 1, 1]);
     });
   });
+
+  group('money', () {
+    test('amounts are written and read in Arabic', () {
+      expect(money(250000), '٢٥٠٬٠٠٠ د.ع');
+      expect(money(1500), '١٬٥٠٠ د.ع');
+      expect(money(900), '٩٠٠ د.ع');
+      expect(money(-5000), '-٥٬٠٠٠ د.ع');
+      expect(parseAmount('٢٥٠٠٠٠'), 250000);
+      expect(parseAmount('250,000'), 250000);
+      expect(parseAmount('٢٥٠ ألف'), 250000);
+      expect(parseAmount('1.5 مليون'), 1500000);
+      expect(parseAmount('١٫٥ مليون'), 1500000);
+      expect(parseAmount(''), isNull);
+      expect(parseAmount('بدون'), isNull);
+    });
+
+    test('appointment time is shown only when set', () {
+      final day = DateTime(2026, 10, 12).millisecondsSinceEpoch;
+      final evening = DateTime(2026, 10, 12, 17, 30).millisecondsSinceEpoch;
+      expect(arDateTime(day), arDate(day));
+      expect(arDateTime(evening), '${arDate(day)} · ٥:٣٠ م');
+      expect(arTime(DateTime(2026, 1, 1, 9, 5)), '٩:٠٥ ص');
+      expect(arTime(DateTime(2026, 1, 1, 12, 0)), '١٢:٠٠ م');
+    });
+
+    test('payments, balance, income and who still owes', () {
+      final now = DateTime(2026, 10, 9);
+      int at(int y, int m, int d) => DateTime(y, m, d).millisecondsSinceEpoch;
+      final c1 = CaseRecord(
+        id: 'c1',
+        title: 'زراعة',
+        created: at(2026, 8, 1),
+        doctorId: 'd1',
+        price: 1000000,
+        payments: [
+          Payment(id: 'p1', date: at(2026, 8, 1), amount: 400000),
+          Payment(id: 'p2', date: at(2026, 10, 2), amount: 100000),
+        ],
+      );
+      final c2 = CaseRecord(
+        id: 'c2',
+        title: 'تبييض',
+        created: at(2026, 10, 3),
+        doctorId: 'd2',
+        price: 150000,
+        payments: [Payment(id: 'p3', date: at(2026, 10, 3), amount: 150000)],
+      );
+      final c3 = CaseRecord(id: 'c3', title: 'فحص', created: at(2026, 10, 4));
+      expect(c1.paid, 500000);
+      expect(c1.due, 500000);
+      expect(c2.due, 0);
+      expect(c3.due, isNull);
+      // ترجع سليمة من JSON.
+      final back = CaseRecord.fromJson(c1.toJson());
+      expect(back.price, 1000000);
+      expect(back.payments.map((p) => p.amount), [400000, 100000]);
+      expect(CaseRecord.fromJson(c3.toJson()).payments, isEmpty);
+
+      final p = Patient(
+        id: 'p',
+        name: 'علي',
+        phone: '',
+        created: 0,
+        cases: [c1, c2, c3],
+      );
+      final all = [for (final c in p.cases) (p, c)];
+      final month = Stats(
+        all
+            .where(
+              (e) =>
+                  e.$2.created >=
+                  DateTime(now.year, now.month).millisecondsSinceEpoch,
+            )
+            .toList(),
+        {'d1': 'د. علي', 'd2': 'د. سارة'},
+        from: DateTime(now.year, now.month),
+        all: all,
+      );
+      // واردات الشهر حسب تاريخ الدفعة: ١٠٠ ألف من حالة قديمة + ١٥٠ ألف.
+      expect(month.income, 250000);
+      expect(month.outstanding, 500000);
+      expect(month.owing.single.$2.id, 'c1');
+      expect(month.billed, 150000);
+      expect(month.incomeByDoctor, {'د. سارة': 150000, 'د. علي': 100000});
+      final m = month.monthlyIncome(3, now: now);
+      expect(m.map((e) => e.$3), [400000, 0, 250000]);
+    });
+  });
 }

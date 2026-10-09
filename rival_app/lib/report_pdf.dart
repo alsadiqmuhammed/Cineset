@@ -670,6 +670,31 @@ Future<List<pw.Widget>> _caseBody(
         ],
       ),
     ],
+    if (full && (c.price != null || c.payments.isNotEmpty))
+      _keep(
+        children: [
+          k.section('الحساب'),
+          k.kpis([
+            (c.price == null ? '—' : money(c.price!), 'الكلفة'),
+            (money(c.paid), 'المدفوع'),
+            (
+              c.due == null ? '—' : money(c.due! < 0 ? 0 : c.due!),
+              (c.due ?? 1) <= 0 ? 'مسدّد بالكامل' : 'المتبقي',
+            ),
+          ]),
+          if (c.payments.isNotEmpty) ...[
+            pw.SizedBox(height: 6),
+            k.table(
+              ['التاريخ', 'المبلغ', 'ملاحظة'],
+              [
+                for (final pay in c.payments)
+                  [arDate(pay.date), money(pay.amount), pay.note],
+              ],
+              flex: [3, 3, 5],
+            ),
+          ],
+        ],
+      ),
     if (photo != null)
       // العنوان ويه محتواه بنفس الصفحة.
       _keep(
@@ -997,6 +1022,14 @@ Future<File> clinicReport(
             'نسبة الإكمال',
           ),
         ]),
+        if (s.income > 0 || s.outstanding > 0) ...[
+          k.section('الحسابات'),
+          k.kpis([
+            (money(s.income), 'واردات الفترة'),
+            (money(s.outstanding), 'بذمة ${b.patients}'),
+            (money(s.billed), 'قيمة الحالات الجديدة'),
+          ]),
+        ],
         k.section(b.teethChart ? 'حسب العلاج' : 'حسب الجلسة'),
         k.bars(s.byTreatment, s.total),
         if (doctor == null && s.byDoctor.isNotEmpty) ...[

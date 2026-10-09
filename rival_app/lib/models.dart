@@ -47,6 +47,34 @@ class Visit {
   );
 }
 
+/// دفعة من المراجع على حالة (بالدينار العراقي).
+class Payment {
+  final String id;
+  int date;
+  int amount;
+  String note;
+  Payment({
+    required this.id,
+    required this.date,
+    required this.amount,
+    this.note = '',
+  });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'date': date,
+    'amount': amount,
+    if (note.isNotEmpty) 'note': note,
+  };
+
+  factory Payment.fromJson(Map<String, dynamic> j) => Payment(
+    id: j['id'] as String,
+    date: j['date'] as int,
+    amount: (j['amount'] as num).toInt(),
+    note: (j['note'] as String?) ?? '',
+  );
+}
+
 enum CaseStatus {
   active('قيد العلاج'),
   done('مكتملة');
@@ -73,6 +101,10 @@ class CaseRecord {
   final List<Visit> visits;
   int? nextVisit; // موعد المراجعة القادم
 
+  /// كلفة العلاج المتفق عليها (null = ما محددة) والدفعات.
+  int? price;
+  final List<Payment> payments;
+
   CaseRecord({
     required this.id,
     required this.title,
@@ -89,10 +121,18 @@ class CaseRecord {
     List<Visit>? visits,
     this.nextVisit,
     this.deciduous,
-  }) : teeth = teeth ?? [],
+    this.price,
+    List<Payment>? payments,
+  }) : payments = payments ?? [],
+       teeth = teeth ?? [],
        areas = areas ?? [],
        doses = doses ?? {},
        visits = visits ?? [];
+
+  int get paid => payments.fold(0, (s, p) => s + p.amount);
+
+  /// المتبقي على المراجع (null إذا الكلفة ما محددة).
+  int? get due => price == null ? null : price! - paid;
 
   /// تاريخ آخر زيارة (أو بداية الحالة).
   int get lastActivity => visits.isEmpty
@@ -115,6 +155,8 @@ class CaseRecord {
     'doses': doses,
     'visits': [for (final v in visits) v.toJson()],
     if (nextVisit != null) 'nextVisit': nextVisit,
+    if (price != null) 'price': price,
+    if (payments.isNotEmpty) 'payments': [for (final p in payments) p.toJson()],
   };
 
   factory CaseRecord.fromJson(Map<String, dynamic> j) => CaseRecord(
@@ -144,6 +186,11 @@ class CaseRecord {
         (legacyAreaIds[e.key]?.first ?? e.key as String): e.value as String,
     },
     nextVisit: j['nextVisit'] as int?,
+    price: (j['price'] as num?)?.toInt(),
+    payments: [
+      for (final p in (j['payments'] as List? ?? []))
+        Payment.fromJson(p as Map<String, dynamic>),
+    ],
     visits: [
       for (final v in (j['visits'] as List? ?? []))
         Visit.fromJson(v as Map<String, dynamic>),

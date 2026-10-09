@@ -435,12 +435,16 @@ class BarRow extends StatelessWidget {
   final String label;
   final int value, max;
   final Color? color;
+
+  /// كيف ينكتب الرقم (افتراضياً عدد بالعربي؛ للمبالغ [money]).
+  final String Function(int)? format;
   const BarRow({
     super.key,
     required this.label,
     required this.value,
     required this.max,
     this.color,
+    this.format,
   });
 
   @override
@@ -482,11 +486,17 @@ class BarRow extends StatelessWidget {
             ),
           ),
           SizedBox(
-            width: 34,
+            width: format == null ? 34 : 96,
             child: Text(
-              ar(value),
+              format?.call(value) ?? ar(value),
               textAlign: TextAlign.left,
-              style: TextStyle(fontWeight: FontWeight.w800, color: b.text),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: b.text,
+                fontSize: format == null ? null : 12,
+              ),
             ),
           ),
         ],

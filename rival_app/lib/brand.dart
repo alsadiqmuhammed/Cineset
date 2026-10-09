@@ -338,6 +338,53 @@ const arMonths = [
   'كانون الأول',
 ];
 
+/// التاريخ ويا الساعة إذا محددة: ١٢ تشرين الأول · ٥:٣٠ م
+String arDateTime(int ms) {
+  final d = DateTime.fromMillisecondsSinceEpoch(ms);
+  if (d.hour == 0 && d.minute == 0) return arDate(ms);
+  return '${arDate(ms)} · ${arTime(d)}';
+}
+
+String arTime(DateTime d) {
+  final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
+  final m = d.minute.toString().padLeft(2, '0');
+  return '${ar(h)}:${ar(m)} ${d.hour < 12 ? 'ص' : 'م'}';
+}
+
+/// مبلغ بالدينار: ٢٥٠٬٠٠٠ د.ع
+String money(int v) {
+  final neg = v < 0;
+  final digits = v.abs().toString();
+  final out = StringBuffer();
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) out.write('٬');
+    out.write(digits[i]);
+  }
+  return '${neg ? '-' : ''}${ar(out.toString())} د.ع';
+}
+
+/// يقرا رقم مكتوب بأرقام عربية أو إنكليزية، مع فواصل أو بدونها،
+/// ويفهم "٢٥٠ ألف" و"١٫٥ مليون".
+int? parseAmount(String s) {
+  const d = '٠١٢٣٤٥٦٧٨٩';
+  final latin = s
+      .replaceAllMapped(RegExp('[٠-٩]'), (m) => '${d.indexOf(m[0]!)}')
+      .replaceAll('٫', '.');
+  final mult = RegExp(r'(مليون|m|M)').hasMatch(latin)
+      ? 1000000
+      : RegExp(r'(ألف|الف|k|K)').hasMatch(latin)
+      ? 1000
+      : 1;
+  if (mult > 1) {
+    final n = RegExp(r'[0-9]+(\.[0-9]+)?')
+        .firstMatch(latin.replaceAll(RegExp('[,٬ ]'), ''));
+    if (n == null) return null;
+    return (double.parse(n[0]!) * mult).round();
+  }
+  final clean = latin.replaceAll(RegExp(r'[^0-9]'), '');
+  return clean.isEmpty ? null : int.tryParse(clean);
+}
+
 String arDate(int ms) {
   final d = DateTime.fromMillisecondsSinceEpoch(ms);
   return '${ar(d.day)} ${arMonths[d.month - 1]} ${ar(d.year)}';
