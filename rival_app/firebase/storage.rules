@@ -1,0 +1,13 @@
+rules_version = '2';
+
+// صور الحالات والأطباء: نفس شرط العضوية من قاعدة البيانات.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /sections/{section}/photos/{name} {
+      allow read, write: if request.auth != null
+        && request.auth.token.email != null
+        && firestore.exists(/databases/(default)/documents/members/$(request.auth.token.email.lower()))
+        && (request.resource == null || request.resource.size < 25 * 1024 * 1024);
+    }
+  }
+}

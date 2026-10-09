@@ -1,0 +1,19 @@
+{
+  "hosting": {
+    "public": "build/web",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [{ "source": "**", "destination": "/index.html" }],
+    "headers": [
+      {
+        "source": "**/*.@(js|wasm|png|jpg|webp|ttf|otf|json)",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }]
+      },
+      {
+        "source": "/@(index.html|flutter_service_worker.js|flutter_bootstrap.js|version.json)",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      }
+    ]
+  },
+  "firestore": { "rules": "firebase/firestore.rules" },
+  "storage": { "rules": "firebase/storage.rules" }
+}
