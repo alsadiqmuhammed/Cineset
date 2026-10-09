@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -130,9 +129,9 @@ class _PointsEditorState extends State<PointsEditor> {
         children: [
           Positioned.fromRect(
             rect: origin & fit.destination,
-            child: Image.file(
+            child: StoredImage(
               errorBuilder: missingPhoto,
-              File(widget.photo.path),
+              widget.photo.path,
               fit: BoxFit.fill,
             ),
           ),

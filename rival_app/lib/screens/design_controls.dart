@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
@@ -43,9 +41,9 @@ class OverlayPicker extends StatelessWidget {
               ? Center(
                   child: Text('بدون', style: TextStyle(color: b.muted)),
                 )
-              : Image.file(
+              : StoredImage(
                   errorBuilder: missingPhoto,
-                  File(path),
+                  path,
                   fit: BoxFit.contain,
                   cacheWidth: 200,
                 ),

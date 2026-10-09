@@ -1,12 +1,15 @@
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart' show XFile;
 
 import '../brand.dart';
 import '../cloud.dart';
 import '../main.dart';
 import '../models.dart';
+import '../store.dart';
 import '../sync.dart';
 
 void toast(BuildContext context, String text) {
@@ -549,8 +552,8 @@ class PhotoThumb extends StatelessWidget {
                   ),
                 ),
               )
-            : Image.file(
-                File(path!),
+            : StoredImage(
+                path!,
                 fit: BoxFit.cover,
                 cacheWidth: (size * 3).round(),
                 errorBuilder: (_, _, _) =>
@@ -591,9 +594,9 @@ class DoctorAvatar extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: d?.photo != null
-          ? Image.file(
+          ? StoredImage(
               errorBuilder: missingPhoto,
-              File(d!.photo!),
+              d!.photo!,
               fit: BoxFit.cover,
               cacheWidth: (size * 3).round(),
             )
@@ -1331,4 +1334,67 @@ class _GlossyPainter extends CustomPainter {
   @override
   bool shouldRepaint(_GlossyPainter old) =>
       old.section != section || old.shield != shield || old.onColor != onColor;
+}
+
+/// صورة محفوظة: ملف بالجهاز، أو بالويب من تخزين العيادة (@/photos/...).
+class StoredImage extends StatelessWidget {
+  final String path;
+  final BoxFit? fit;
+  final AlignmentGeometry alignment;
+  final int? cacheWidth;
+  final ImageErrorWidgetBuilder? errorBuilder;
+  const StoredImage(
+    this.path, {
+    super.key,
+    this.fit,
+    this.alignment = Alignment.center,
+    this.cacheWidth,
+    this.errorBuilder,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!kIsWeb) {
+      return Image.file(
+        File(path),
+        fit: fit,
+        alignment: alignment,
+        cacheWidth: cacheWidth,
+        errorBuilder: errorBuilder,
+      );
+    }
+    final name = path.split('/').last;
+    return FutureBuilder<String>(
+      future: Cloud.instance.photoUrl(Store.instance.section.name, name),
+      builder: (context, snap) {
+        if (snap.hasError) {
+          return errorBuilder?.call(context, snap.error!, null) ??
+              const SizedBox();
+        }
+        if (!snap.hasData) {
+          return ColoredBox(color: context.brand.glass);
+        }
+        return Image.network(
+          snap.data!,
+          fit: fit,
+          alignment: alignment,
+          // عنصر <img> حتى تنعرض بدون إعدادات CORS بالتخزين.
+          webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+          errorBuilder: errorBuilder,
+        );
+      },
+    );
+  }
+}
+
+/// يحفظ صورة مختارة: بالتلفون تنسخ لمجلد التطبيق، وبالويب تنرفع للتخزين.
+Future<String> importPicked(XFile picked) async {
+  if (!kIsWeb) return Store.instance.importPhoto(picked.path);
+  final name = picked.name.toLowerCase();
+  final ext = name.endsWith('.png')
+      ? 'png'
+      : name.endsWith('.webp')
+      ? 'webp'
+      : 'jpg';
+  return Store.instance.importPhotoBytes(await picked.readAsBytes(), ext);
 }

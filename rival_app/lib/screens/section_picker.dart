@@ -22,57 +22,62 @@ class SectionPicker extends StatelessWidget {
     final b = context.brand;
     return Scaffold(
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
-          children: [
-            Text(
-              'أهلاً بيك',
-              style: TextStyle(
-                color: b.muted,
-                fontSize: 17,
-                fontFamily: kFontAccent,
-              ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+              children: [
+                Text(
+                  'أهلاً بيك',
+                  style: TextStyle(
+                    color: b.muted,
+                    fontSize: 17,
+                    fontFamily: kFontAccent,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'اختار القسم',
+                  style: TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w800,
+                    color: b.text,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'كل قسم إله أرشيفه وأطباؤه وهويته. تگدر تبدّل بعدين من "المزيد".',
+                  style: TextStyle(color: b.muted, height: 1.6),
+                ),
+                const SizedBox(height: 26),
+                if (allowed.contains(Section.dental))
+                  _SectionCard(
+                    brand: dental,
+                    title: 'قسم الأسنان',
+                    subtitle: 'عيادة ريڤال · تجميل وتقويم وزراعة الأسنان',
+                    logo: dental.logoPrimary,
+                    light: true,
+                    onTap: busy ? null : () => onChosen(Section.dental),
+                  ),
+                const SizedBox(height: 18),
+                if (allowed.contains(Section.beauty))
+                  _SectionCard(
+                    brand: beauty,
+                    title: 'قسم التجميل',
+                    subtitle: 'ريڤال بيوتي · فلر، بوتوكس، نضارة البشرة',
+                    logo: beauty.logoReversed,
+                    light: false,
+                    onTap: busy ? null : () => onChosen(Section.beauty),
+                  ),
+                if (busy)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 24),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              'اختار القسم',
-              style: TextStyle(
-                fontSize: 30,
-                fontWeight: FontWeight.w800,
-                color: b.text,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'كل قسم إله أرشيفه وأطباؤه وهويته. تگدر تبدّل بعدين من "المزيد".',
-              style: TextStyle(color: b.muted, height: 1.6),
-            ),
-            const SizedBox(height: 26),
-            if (allowed.contains(Section.dental))
-              _SectionCard(
-                brand: dental,
-                title: 'قسم الأسنان',
-                subtitle: 'عيادة ريڤال · تجميل وتقويم وزراعة الأسنان',
-                logo: dental.logoPrimary,
-                light: true,
-                onTap: busy ? null : () => onChosen(Section.dental),
-              ),
-            const SizedBox(height: 18),
-            if (allowed.contains(Section.beauty))
-              _SectionCard(
-                brand: beauty,
-                title: 'قسم التجميل',
-                subtitle: 'ريڤال بيوتي · فلر، بوتوكس، نضارة البشرة',
-                logo: beauty.logoReversed,
-                light: false,
-                onTap: busy ? null : () => onChosen(Section.beauty),
-              ),
-            if (busy)
-              const Padding(
-                padding: EdgeInsets.only(top: 24),
-                child: Center(child: CircularProgressIndicator()),
-              ),
-          ],
+          ),
         ),
       ),
     );

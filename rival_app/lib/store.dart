@@ -6,6 +6,7 @@ import 'dart:isolate';
 import 'package:archive/archive_io.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'brand.dart';
 import 'models.dart';
@@ -86,6 +87,19 @@ class Store extends ChangeNotifier {
 
   /// يجهّز المجلد الأساسي ويقرأ الإعدادات العامة (القفل).
   Future<void> init({Directory? dir}) async {
+    account = null;
+    myDoctorId = null;
+    _opened = null;
+    if (kIsWeb) {
+      // بالويب ماكو ملفات: البيانات من قاعدة البيانات (ويا ذاكرتها بالمتصفح)،
+      // والإعدادات بذاكرة المتصفح.
+      final prefs = await SharedPreferences.getInstance();
+      appearance = prefs.getString('appearance') ?? 'auto';
+      look.value = appearance;
+      cloudSkipped = false;
+      lockEnabled = false;
+      return;
+    }
     device = dir ?? await getApplicationDocumentsDirectory();
     base = device;
     account = null;
@@ -101,13 +115,20 @@ class Store extends ChangeNotifier {
     }
   }
 
-  Future<void> _saveSettings() => _settingsFile.writeAsString(
-    jsonEncode({
-      'lock': lockEnabled,
-      'cloudSkipped': cloudSkipped,
-      'appearance': appearance,
-    }),
-  );
+  Future<void> _saveSettings() async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('appearance', appearance);
+      return;
+    }
+    await _settingsFile.writeAsString(
+      jsonEncode({
+        'lock': lockEnabled,
+        'cloudSkipped': cloudSkipped,
+        'appearance': appearance,
+      }),
+    );
+  }
 
   Future<void> setLock(bool v) async {
     lockEnabled = v;
@@ -132,8 +153,10 @@ class Store extends ChangeNotifier {
   Future<void> useAccount(String? uid) async {
     if (uid == account && _opened != null) return;
     account = uid;
-    base = uid == null ? device : Directory('${device.path}/accounts/$uid');
-    await base.create(recursive: true);
+    if (!kIsWeb) {
+      base = uid == null ? device : Directory('${device.path}/accounts/$uid');
+      await base.create(recursive: true);
+    }
     myDoctorId = null;
     _opened = null;
     patients.clear();
@@ -190,6 +213,15 @@ class Store extends ChangeNotifier {
     sync = null;
     await old?.detach();
     section = s;
+    if (kIsWeb) {
+      patients.clear();
+      doctors.clear();
+      overlays.clear();
+      clinic = ClinicInfo();
+      _opened = s;
+      notifyListeners();
+      return;
+    }
     for (final d in [photosDir, overlaysDir, exportsDir]) {
       await d.create(recursive: true);
     }
@@ -267,6 +299,7 @@ class Store extends ChangeNotifier {
 
   /// كل حفظ بملف مؤقت خاص بيه، حتى لو صار حفظين بنفس اللحظة ما يتعارضون.
   Future<void> _write(File f, Object data) async {
+    if (kIsWeb) return;
     final tmp = File('${f.path}.${newId()}.tmp');
     await tmp.writeAsString(jsonEncode(data));
     await tmp.rename(f.path);
@@ -364,6 +397,7 @@ class Store extends ChangeNotifier {
   }
 
   void _deleteFile(String path) {
+    if (kIsWeb) return;
     final f = File(path);
     if (f.existsSync()) f.deleteSync();
   }
@@ -388,6 +422,25 @@ class Store extends ChangeNotifier {
     await File(sourcePath).copy(dest);
     return dest;
   }
+
+  /// صورة من بايتات (الويب، أو أي مكان ما عنده مسار ملف). بالويب تنرفع
+  /// مباشرة لتخزين العيادة وترجع بمسارها النسبي (@/photos/...).
+  Future<String> importPhotoBytes(List<int> bytes, String ext) async {
+    final name = '${newId()}.${ext.toLowerCase()}';
+    if (kIsWeb) {
+      final up = photoUploader;
+      if (up == null) throw StateError('سجّل دخول حتى ترفع الصور.');
+      await up(section.name, name, bytes);
+      return '@/photos/$name';
+    }
+    final dest = '${photosDir.path}/$name';
+    await File(dest).writeAsBytes(bytes);
+    return dest;
+  }
+
+  /// يرفع صورة لتخزين العيادة (يحدده Cloud بعد الدخول).
+  Future<void> Function(String section, String name, List<int> bytes)?
+  photoUploader;
 
   Future<void> deletePhoto(Photo old) async => _deleteFile(old.path);
 

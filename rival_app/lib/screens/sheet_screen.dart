@@ -3,9 +3,11 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../brand.dart';
+import '../download.dart';
 import '../sheet_io.dart';
 import '../store.dart';
 import 'common.dart';
@@ -23,6 +25,14 @@ Future<void> exportExcel(BuildContext context) async {
     final d = DateTime.now();
     final name =
         'ريڤال_${store.brand.section == Section.dental ? 'أسنان' : 'تجميل'}_${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}.xlsx';
+    if (kIsWeb) {
+      await downloadBytes(
+        bytes,
+        name,
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      return;
+    }
     final file = File('${store.exportsDir.path}/$name');
     await file.parent.create(recursive: true);
     await file.writeAsBytes(bytes);
@@ -38,14 +48,21 @@ Future<void> importExcel(BuildContext context) async {
     type: FileType.custom,
     allowedExtensions: ['xlsx'],
   );
-  final path = files.isEmpty ? null : files.first.path;
-  if (path == null || !context.mounted) return;
+  if (files.isEmpty || !context.mounted) return;
+  final picked = files.first;
   ImportPlan plan;
   try {
-    final bytes = await File(path).readAsBytes();
-    plan = await Isolate.run(
-      () => readPatientsSheet(Uint8List.fromList(bytes)),
-    );
+    if (kIsWeb) {
+      // بالمتصفح ماكو مسار ولا خيوط منفصلة: نقرا البايتات مباشرة.
+      plan = readPatientsSheet(await picked.xFile.readAsBytes());
+    } else {
+      final path = picked.path;
+      if (path == null) return;
+      final bytes = await File(path).readAsBytes();
+      plan = await Isolate.run(
+        () => readPatientsSheet(Uint8List.fromList(bytes)),
+      );
+    }
   } on FormatException catch (e) {
     if (context.mounted) toast(context, e.message);
     return;

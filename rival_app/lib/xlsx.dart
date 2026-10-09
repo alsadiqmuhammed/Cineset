@@ -75,7 +75,8 @@ List<Sheet> readXlsx(Uint8List bytes) {
   var n = 0;
   for (final s in wb.findAllElements('sheet')) {
     n++;
-    final rid = s.getAttribute('id', namespaceUri: _rel) ?? s.getAttribute('r:id');
+    final rid =
+        s.getAttribute('id', namespaceUri: _rel) ?? s.getAttribute('r:id');
     var target = rels[rid] ?? 'worksheets/sheet$n.xml';
     if (target.startsWith('/')) {
       target = target.substring(1);

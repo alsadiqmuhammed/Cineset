@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 
 import '../brand.dart';
@@ -105,8 +103,8 @@ class DoctorCard extends StatelessWidget {
               bottom: 40,
               width: 150,
               child: portrait != null
-                  ? Image.file(
-                      File(portrait),
+                  ? StoredImage(
+                      portrait,
                       fit: BoxFit.contain,
                       alignment: Alignment.bottomCenter,
                       errorBuilder: (_, _, _) => const SizedBox(),

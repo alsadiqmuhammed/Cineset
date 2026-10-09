@@ -293,13 +293,19 @@ String _caseKey(String patientKey, SheetRow r, int dup) =>
     'x${_hash('$patientKey|${r[SheetField.date]}|${r[SheetField.type]}|${r[SheetField.price]}|${r[SheetField.remaining]}|$dup')}';
 
 String _hash(String s) {
-  // FNV-1a ثابت بين الأجهزة (حتى الاستيراد مرتين ما يكرر الحالات).
-  var h = 0xcbf29ce484222325;
-  for (final c in s.codeUnits) {
-    h ^= c;
-    h = h * 0x100000001b3;
+  // FNV-1a بـ٣٢ بت مرتين (ببذرتين)، يطلع نفس الرقم بالموبايل والويب،
+  // حتى الاستيراد مرتين ما يكرر الحالات.
+  int fnv(int seed) {
+    var h = seed;
+    for (final c in s.codeUnits) {
+      h = (h ^ c) & 0xffffffff;
+      // h × 16777619 بدون ما يعبر حدود دقة الأرقام بالمتصفح.
+      h = (h * 0x193 + ((h & 0xff) << 24)) & 0xffffffff;
+    }
+    return h;
   }
-  return h.toUnsigned(64).toRadixString(36);
+
+  return '${fnv(0x811c9dc5).toRadixString(36)}${fnv(0x050c5d1f).toRadixString(36)}';
 }
 
 /// نتيجة الحفظ.
@@ -416,7 +422,21 @@ Future<ImportResult> applyImport(
       final caseId = r[SheetField.caseId].isNotEmpty
           ? r[SheetField.caseId]
           : _caseKey(ip.key, r, dup);
-      if (pp.cases.any((c) => c.id == caseId)) {
+      final dayMs = parseSheetDate(r[SheetField.date]);
+      final samePrice = parseAmount(r[SheetField.price]);
+      if (pp.cases.any(
+        (c) =>
+            c.id == caseId ||
+            // نفس اليوم والنوع والمبلغ (استيراد قديم بمعرّفات ثانية).
+            (dayMs != null &&
+                dayOf(c.created) == dayOf(dayMs.millisecondsSinceEpoch) &&
+                c.title ==
+                    (r[SheetField.type].isEmpty
+                        ? 'غير محدد'
+                        : r[SheetField.type]) &&
+                c.price == (samePrice ?? c.price) &&
+                dup == 0),
+      )) {
         res.skipped++;
         continue;
       }

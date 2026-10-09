@@ -1,4 +1,7 @@
 import 'dart:io';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart'
@@ -31,6 +34,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import 'brand.dart';
+import 'download.dart';
 import 'charts.dart';
 import 'insights.dart';
 import 'models.dart';
@@ -474,7 +478,7 @@ class _Kit {
 
   pw.Widget avatar(Doctor? d, double size) {
     final photo = d?.photo;
-    if (photo != null && File(photo).existsSync()) {
+    if (photo != null && !kIsWeb && File(photo).existsSync()) {
       return pw.ClipOval(
         child: pw.Image(
           pw.MemoryImage(File(photo).readAsBytesSync()),
@@ -779,7 +783,17 @@ Future<List<pw.Widget>> _caseBody(
   ];
 }
 
+/// بالويب التقرير ينزل مباشرة للكمبيوتر بدل ما ينحفظ بملف.
+class WebDownloaded implements Exception {
+  const WebDownloaded();
+}
+
 Future<File> _save(pw.Document doc, String name) async {
+  if (kIsWeb) {
+    final safe = name.replaceAll(RegExp(r'[^\w؀-ۿ]+'), '_');
+    await downloadBytes(await doc.save(), '$safe.pdf', 'application/pdf');
+    throw const WebDownloaded();
+  }
   final dir = Store.instance.exportsDir.path;
   final safe = name.replaceAll(RegExp(r'[^\w؀-ۿ]+'), '_');
   final f = File('$dir/$safe.pdf');
@@ -793,7 +807,7 @@ Future<File> caseReport(Brand b, Patient p, CaseRecord c) async {
   final body = await _caseBody(k, p, c);
   final doctor = Store.instance.doctor(c.doctorId);
   pw.MemoryImage? image(String? path) {
-    if (path == null || !File(path).existsSync()) return null;
+    if (path == null || kIsWeb || !File(path).existsSync()) return null;
     return pw.MemoryImage(File(path).readAsBytesSync());
   }
 
@@ -1078,6 +1092,12 @@ Future<void> shareReport(
   File file;
   try {
     file = await build();
+  } on WebDownloaded {
+    if (context.mounted) {
+      Navigator.pop(context);
+      toast(context, 'تنزّل التقرير على الكمبيوتر');
+    }
+    return;
   } catch (e) {
     if (context.mounted) {
       Navigator.pop(context);

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../brand.dart';
@@ -70,108 +71,115 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       appBar: widget.fromSettings ? AppBar() : null,
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(24, 36, 24, 24),
-          children: [
-            const Center(
-              child: GlossyEmblem(
-                section: Section.dental,
-                size: 170,
-                shield: true,
-              ),
-            ),
-            const SizedBox(height: 22),
-            Text(
-              'حساب العيادة',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-                color: ink,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'ادخل حتى تشتغل كل أجهزة العيادة على نفس الأرشيف. التعديلات تتزامن لحالها، وتنحفظ حتى بدون إنترنت.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: soft, height: 1.6),
-            ),
-            const SizedBox(height: 26),
-            TextField(
-              controller: _email,
-              keyboardType: TextInputType.emailAddress,
-              textDirection: TextDirection.ltr,
-              autofillHints: const [AutofillHints.email],
-              decoration: const InputDecoration(
-                labelText: 'الإيميل',
-                prefixIcon: Icon(Icons.alternate_email),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _password,
-              obscureText: _hide,
-              textDirection: TextDirection.ltr,
-              autofillHints: const [AutofillHints.password],
-              onSubmitted: (_) => _signIn(),
-              decoration: InputDecoration(
-                labelText: 'الرمز',
-                prefixIcon: const Icon(Icons.lock_outline),
-                suffixIcon: IconButton(
-                  onPressed: () => setState(() => _hide = !_hide),
-                  icon: Icon(_hide ? Icons.visibility : Icons.visibility_off),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(24, 36, 24, 24),
+              children: [
+                const Center(
+                  child: GlossyEmblem(
+                    section: Section.dental,
+                    size: 170,
+                    shield: true,
+                  ),
                 ),
-              ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFB3261E).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
+                const SizedBox(height: 22),
+                Text(
+                  'حساب العيادة',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    color: ink,
+                  ),
                 ),
-                child: Text(
-                  _error!,
-                  style: const TextStyle(color: Color(0xFFB3261E)),
+                const SizedBox(height: 8),
+                Text(
+                  'ادخل حتى تشتغل كل أجهزة العيادة على نفس الأرشيف. التعديلات تتزامن لحالها، وتنحفظ حتى بدون إنترنت.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: soft, height: 1.6),
                 ),
-              ),
-            ],
-            const SizedBox(height: 20),
-            FilledButton(
-              onPressed: _busy ? null : _signIn,
-              style: FilledButton.styleFrom(
-                backgroundColor: b.isDark ? b.primary : ink,
-                minimumSize: const Size.fromHeight(52),
-              ),
-              child: _busy
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        color: Colors.white,
+                const SizedBox(height: 26),
+                TextField(
+                  controller: _email,
+                  keyboardType: TextInputType.emailAddress,
+                  textDirection: TextDirection.ltr,
+                  autofillHints: const [AutofillHints.email],
+                  decoration: const InputDecoration(
+                    labelText: 'الإيميل',
+                    prefixIcon: Icon(Icons.alternate_email),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _password,
+                  obscureText: _hide,
+                  textDirection: TextDirection.ltr,
+                  autofillHints: const [AutofillHints.password],
+                  onSubmitted: (_) => _signIn(),
+                  decoration: InputDecoration(
+                    labelText: 'الرمز',
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    suffixIcon: IconButton(
+                      onPressed: () => setState(() => _hide = !_hide),
+                      icon: Icon(
+                        _hide ? Icons.visibility : Icons.visibility_off,
                       ),
-                    )
-                  : const Text('دخول'),
-            ),
-            if (!widget.fromSettings) ...[
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: _busy ? null : _skip,
-                child: Text(
-                  'استخدم بدون حساب (بيانات هذا الجهاز بس)',
-                  style: TextStyle(color: soft),
+                    ),
+                  ),
                 ),
-              ),
-            ],
-            const SizedBox(height: 18),
-            Text(
-              'الحسابات يضيفها مسؤول العيادة. إذا ما عندك حساب، اطلبه منه.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: soft, fontSize: 12),
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFB3261E).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      _error!,
+                      style: const TextStyle(color: Color(0xFFB3261E)),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                FilledButton(
+                  onPressed: _busy ? null : _signIn,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: b.isDark ? b.primary : ink,
+                    minimumSize: const Size.fromHeight(52),
+                  ),
+                  child: _busy
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('دخول'),
+                ),
+                if (!widget.fromSettings && !kIsWeb) ...[
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: _busy ? null : _skip,
+                    child: Text(
+                      'استخدم بدون حساب (بيانات هذا الجهاز بس)',
+                      style: TextStyle(color: soft),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 18),
+                Text(
+                  'الحسابات يضيفها مسؤول العيادة. إذا ما عندك حساب، اطلبه منه.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: soft, fontSize: 12),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

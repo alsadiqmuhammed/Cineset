@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -76,9 +74,9 @@ class OverlaysScreen extends StatelessWidget {
                               context.brand.card,
                             ),
                           ),
-                          Image.file(
+                          StoredImage(
                             errorBuilder: missingPhoto,
-                            File(path),
+                            path,
                             fit: BoxFit.contain,
                             cacheWidth: 500,
                           ),

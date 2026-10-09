@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -6,6 +7,7 @@ import 'brand.dart';
 import 'cloud.dart';
 import 'lock.dart';
 import 'screens/appointments_screen.dart';
+import 'screens/common.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/more_screen.dart';
@@ -103,7 +105,8 @@ class RivalAppState extends State<RivalApp> {
   bool get _needsLogin =>
       Cloud.instance.available &&
       !Cloud.instance.signedIn &&
-      !Store.instance.cloudSkipped;
+      // نسخة الويب دايماً بحساب العيادة (ماكو تخزين بالمتصفح).
+      (kIsWeb || !Store.instance.cloudSkipped);
 
   @override
   Widget build(BuildContext context) {
@@ -178,26 +181,131 @@ class HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final b = context.brand;
+    final items = [
+      (Icons.home_outlined, Icons.home_rounded, 'الرئيسية'),
+      (Icons.people_outline, Icons.people_rounded, b.patients),
+      (Icons.event_note_outlined, Icons.event_note_rounded, 'المواعيد'),
+      (Icons.insights_outlined, Icons.insights_rounded, 'التقارير'),
+      (Icons.grid_view_outlined, Icons.grid_view_rounded, 'المزيد'),
+    ];
+    final pages = IndexedStack(
+      index: _tab,
+      children: [
+        DashboardScreen(onGo: go),
+        const PatientsScreen(),
+        const AppointmentsScreen(),
+        const ReportsScreen(),
+        const MoreScreen(),
+      ],
+    );
+    // شاشة عريضة (كمبيوتر أو آيباد): قائمة جانبية والمحتوى بعرض مريح.
+    if (MediaQuery.sizeOf(context).width >= 900) {
+      return Scaffold(
+        body: Row(
+          children: [
+            _SideBar(index: _tab, onTap: go, items: items),
+            Expanded(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 980),
+                  child: pages,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return Scaffold(
-      body: IndexedStack(
-        index: _tab,
-        children: [
-          DashboardScreen(onGo: go),
-          const PatientsScreen(),
-          const AppointmentsScreen(),
-          const ReportsScreen(),
-          const MoreScreen(),
-        ],
+      body: pages,
+      bottomNavigationBar: _NeuNavBar(index: _tab, onTap: go, items: items),
+    );
+  }
+}
+
+/// القائمة الجانبية الزجاجية للشاشات العريضة.
+class _SideBar extends StatelessWidget {
+  final int index;
+  final ValueChanged<int> onTap;
+  final List<(IconData, IconData, String)> items;
+  const _SideBar({
+    required this.index,
+    required this.onTap,
+    required this.items,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    return Container(
+      width: 248,
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(14, 22, 14, 18),
+      decoration: BoxDecoration(
+        color: b.glass,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: b.glassEdge),
+        boxShadow: b.raised(0.8),
       ),
-      bottomNavigationBar: _NeuNavBar(
-        index: _tab,
-        onTap: go,
-        items: [
-          (Icons.home_outlined, Icons.home_rounded, 'الرئيسية'),
-          (Icons.people_outline, Icons.people_rounded, b.patients),
-          (Icons.event_note_outlined, Icons.event_note_rounded, 'المواعيد'),
-          (Icons.insights_outlined, Icons.insights_rounded, 'التقارير'),
-          (Icons.grid_view_outlined, Icons.grid_view_rounded, 'المزيد'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Image.asset(
+            b.isDark ? b.logoReversed : b.logoPrimary,
+            height: 86,
+            fit: BoxFit.contain,
+          ),
+          const SizedBox(height: 22),
+          for (var i = 0; i < items.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Material(
+                color: i == index
+                    ? b.primary.withValues(alpha: b.isDark ? 0.22 : 0.1)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () => onTap(i),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 13,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          i == index ? items[i].$2 : items[i].$1,
+                          color: i == index ? b.primaryDeep : b.muted,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          items[i].$3,
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: i == index
+                                ? FontWeight.w800
+                                : FontWeight.w500,
+                            color: i == index ? b.primaryDeep : b.text,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          const Spacer(),
+          const SectionSwitch(),
+          const SizedBox(height: 10),
+          Text(
+            Cloud.instance.user?.email ?? '',
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: b.muted, fontSize: 11.5),
+          ),
         ],
       ),
     );

@@ -1,5 +1,4 @@
-import 'dart:io';
-
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -65,17 +64,18 @@ class _CaseScreenState extends State<CaseScreen> {
     if (picked == null) return;
     setState(() => _busy = true);
     try {
-      final path = await Store.instance.importPhoto(picked.path);
+      final path = await importPicked(picked);
       final old = _get(slot);
       if (old != null) {
         evictImage(old.path);
         await Store.instance.deletePhoto(old);
       }
       var photo = Photo(path, taken: DateTime.now().millisecondsSinceEpoch);
-      photo = await _tryAlign(photo) ?? photo;
+      // المحاذاة التلقائية تحتاج كشف الوجه بالتلفون.
+      if (!kIsWeb) photo = await _tryAlign(photo) ?? photo;
       _set(slot, photo);
       await Store.instance.save();
-      if (mounted && !photo.aligned) {
+      if (mounted && !photo.aligned && !kIsWeb) {
         toast(
           context,
           b.f(
@@ -252,49 +252,73 @@ class _CaseScreenState extends State<CaseScreen> {
                   Expanded(child: _slotCard(Slot.after, 'بعد')),
                 ],
               ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: ready && !_busy ? _alignBoth : null,
-                icon: const Icon(Icons.auto_fix_high),
-                label: const Text('محاذاة تلقائية بالذكاء الاصطناعي'),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: ready
-                          ? () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ComposeScreen(
-                                  patient: widget.patient,
-                                  record: c,
+              if (kIsWeb) ...[
+                const SizedBox(height: 12),
+                BrandCard(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Icon(Icons.phone_iphone, color: b.primary),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'المحاذاة وتصميم قبل وبعد وفيديو التحوّل من تطبيق التلفون، وتطلع هنا تلقائياً.',
+                          style: TextStyle(
+                            color: b.muted,
+                            fontSize: 12.5,
+                            height: 1.6,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (!kIsWeb) const SizedBox(height: 12),
+              if (!kIsWeb)
+                OutlinedButton.icon(
+                  onPressed: ready && !_busy ? _alignBoth : null,
+                  icon: const Icon(Icons.auto_fix_high),
+                  label: const Text('محاذاة تلقائية بالذكاء الاصطناعي'),
+                ),
+              if (!kIsWeb) const SizedBox(height: 12),
+              if (!kIsWeb)
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: ready
+                            ? () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ComposeScreen(
+                                    patient: widget.patient,
+                                    record: c,
+                                  ),
                                 ),
-                              ),
-                            )
-                          : null,
-                      icon: const Icon(Icons.compare),
-                      label: const Text('تصميم قبل وبعد'),
+                              )
+                            : null,
+                        icon: const Icon(Icons.compare),
+                        label: const Text('تصميم قبل وبعد'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton.tonalIcon(
-                      onPressed: ready
-                          ? () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => VideoScreen(record: c),
-                              ),
-                            )
-                          : null,
-                      icon: const Icon(Icons.movie_creation_outlined),
-                      label: const Text('فيديو التحوّل'),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FilledButton.tonalIcon(
+                        onPressed: ready
+                            ? () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => VideoScreen(record: c),
+                                ),
+                              )
+                            : null,
+                        icon: const Icon(Icons.movie_creation_outlined),
+                        label: const Text('فيديو التحوّل'),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
               const SizedBox(height: 10),
               OutlinedButton.icon(
                 onPressed: () => shareReport(
@@ -594,9 +618,9 @@ class _CaseScreenState extends State<CaseScreen> {
                 : Stack(
                     fit: StackFit.expand,
                     children: [
-                      Image.file(
+                      StoredImage(
                         errorBuilder: missingPhoto,
-                        File(p.path),
+                        p.path,
                         fit: BoxFit.cover,
                         cacheWidth: 600,
                       ),
@@ -622,11 +646,14 @@ class _CaseScreenState extends State<CaseScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              IconButton(
-                tooltip: 'كاميرا',
-                onPressed: _busy ? null : () => _pick(slot, ImageSource.camera),
-                icon: const Icon(Icons.photo_camera_outlined),
-              ),
+              if (!kIsWeb)
+                IconButton(
+                  tooltip: 'كاميرا',
+                  onPressed: _busy
+                      ? null
+                      : () => _pick(slot, ImageSource.camera),
+                  icon: const Icon(Icons.photo_camera_outlined),
+                ),
               IconButton(
                 tooltip: 'المعرض',
                 onPressed: _busy
@@ -634,11 +661,14 @@ class _CaseScreenState extends State<CaseScreen> {
                     : () => _pick(slot, ImageSource.gallery),
                 icon: const Icon(Icons.photo_library_outlined),
               ),
-              IconButton(
-                tooltip: 'نقاط المحاذاة',
-                onPressed: p == null || _busy ? null : () => _editPoints(slot),
-                icon: const Icon(Icons.control_point),
-              ),
+              if (!kIsWeb)
+                IconButton(
+                  tooltip: 'نقاط المحاذاة',
+                  onPressed: p == null || _busy
+                      ? null
+                      : () => _editPoints(slot),
+                  icon: const Icon(Icons.control_point),
+                ),
             ],
           ),
         ],

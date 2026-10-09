@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 
 import '../brand.dart';
@@ -86,8 +84,8 @@ class DoctorProfileScreen extends StatelessWidget {
                                     child: child,
                                   ),
                                 ),
-                                child: Image.file(
-                                  File(doctor.portrait!),
+                                child: StoredImage(
+                                  doctor.portrait!,
                                   fit: BoxFit.contain,
                                   alignment: Alignment.bottomCenter,
                                   errorBuilder: (_, _, _) => const SizedBox(),
@@ -301,9 +299,9 @@ class DoctorProfileScreen extends StatelessWidget {
                               ),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(12),
-                                child: Image.file(
+                                child: StoredImage(
                                   errorBuilder: missingPhoto,
-                                  File(c.after!.path),
+                                  c.after!.path,
                                   fit: BoxFit.cover,
                                   cacheWidth: 300,
                                 ),

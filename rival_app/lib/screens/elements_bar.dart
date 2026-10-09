@@ -43,7 +43,7 @@ class ElementsBar extends StatelessWidget {
   Future<String?> _pickPng(BuildContext context) async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (picked == null) return null;
-    return Store.instance.importPhoto(picked.path);
+    return importPicked(picked);
   }
 
   Future<void> _addImage(

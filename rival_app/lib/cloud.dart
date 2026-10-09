@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'store.dart';
 import 'sync.dart';
@@ -18,6 +19,8 @@ const _options = FirebaseOptions(
   messagingSenderId: '897577160241',
   projectId: 'rival-26719',
   storageBucket: 'rival-26719.firebasestorage.app',
+  // للويب: الدخول يمر عبر نطاق المشروع.
+  authDomain: 'rival-26719.firebaseapp.com',
 );
 
 /// عضو بالعيادة (وثيقة members/{email}).
@@ -63,6 +66,14 @@ class Cloud extends ChangeNotifier {
   Cloud._();
   static final instance = Cloud._();
 
+  final Map<String, Future<String>> _urls = {};
+
+  /// رابط صورة بالتخزين (للويب: الصور تنعرض من هنا مباشرة).
+  Future<String> photoUrl(String section, String name) =>
+      _urls['$section/$name'] ??= FirebaseStorage.instance
+          .ref('sections/$section/photos/$name')
+          .getDownloadURL();
+
   bool available = false;
   SyncStatus status = SyncStatus.off;
   String? detail;
@@ -79,6 +90,23 @@ class Cloud extends ChangeNotifier {
     try {
       await Firebase.initializeApp(options: _options);
       available = true;
+      if (kIsWeb) {
+        // ذاكرة بالمتصفح حتى تنفتح البيانات بسرعة وتشتغل لحظات بدون إنترنت.
+        FirebaseFirestore.instance.settings = const Settings(
+          persistenceEnabled: true,
+        );
+      }
+      Store.instance.photoUploader = (section, name, bytes) async {
+        final ext = name.split('.').last.toLowerCase();
+        await FirebaseStorage.instance
+            .ref('sections/$section/photos/$name')
+            .putData(
+              Uint8List.fromList(bytes),
+              SettableMetadata(
+                contentType: ext == 'png' ? 'image/png' : 'image/jpeg',
+              ),
+            );
+      };
     } catch (e) {
       debugPrint('Firebase: $e');
       available = false;
@@ -102,6 +130,33 @@ class Cloud extends ChangeNotifier {
   File get _memberCache =>
       File('${Store.instance.device.path}/member_${user?.uid}.json');
 
+  // نسخة محفوظة من الصلاحيات (ملف بالتلفون، وذاكرة المتصفح بالويب).
+  Future<void> _cacheWrite(String json) async {
+    if (kIsWeb) {
+      final p = await SharedPreferences.getInstance();
+      await p.setString('member_${user?.uid}', json);
+    } else {
+      await _memberCache.writeAsString(json);
+    }
+  }
+
+  Future<String?> _cacheRead() async {
+    if (kIsWeb) {
+      final p = await SharedPreferences.getInstance();
+      return p.getString('member_${user?.uid}');
+    }
+    return await _memberCache.exists() ? _memberCache.readAsString() : null;
+  }
+
+  Future<void> _cacheClear() async {
+    if (kIsWeb) {
+      final p = await SharedPreferences.getInstance();
+      await p.remove('member_${user?.uid}');
+    } else if (await _memberCache.exists()) {
+      await _memberCache.delete();
+    }
+  }
+
   /// (الصلاحيات، هل السيرفر أكّد إن الحساب ما موجود).
   Future<(Member?, bool)> _loadMember({Duration? timeout}) async {
     final email = user?.email?.toLowerCase();
@@ -115,18 +170,20 @@ class Cloud extends ChangeNotifier {
       final doc = await future;
       if (doc.exists) {
         final data = doc.data()!;
-        await _memberCache.writeAsString(jsonEncode(data));
+        await _cacheWrite(jsonEncode(data));
         return (Member.fromJson(email, data), false);
       }
       if (!doc.metadata.isFromCache) {
-        if (await _memberCache.exists()) await _memberCache.delete();
+        await _cacheClear();
         return (null, true);
       }
     } catch (_) {
       // بدون إنترنت أو بطء: نكمل على النسخة المحفوظة.
     }
     try {
-      final data = jsonDecode(await _memberCache.readAsString());
+      final raw = await _cacheRead();
+      if (raw == null) return (null, false);
+      final data = jsonDecode(raw);
       return (Member.fromJson(email, data as Map<String, dynamic>), false);
     } catch (_) {
       return (null, false);
@@ -354,12 +411,17 @@ class Net extends ChangeNotifier {
 
   Future<void> check() async {
     bool ok;
-    try {
-      final r = await InternetAddress.lookup('firestore.googleapis.com')
-          .timeout(const Duration(seconds: 5));
-      ok = r.isNotEmpty && r.first.rawAddress.isNotEmpty;
-    } catch (_) {
-      ok = false;
+    if (kIsWeb) {
+      // المتصفح يدير الاتصال بنفسه؛ نعتبره متصل وFirestore يتعامل ويا الانقطاع.
+      ok = true;
+    } else {
+      try {
+        final r = await InternetAddress.lookup('firestore.googleapis.com')
+            .timeout(const Duration(seconds: 5));
+        ok = r.isNotEmpty && r.first.rawAddress.isNotEmpty;
+      } catch (_) {
+        ok = false;
+      }
     }
     if (ok == online) return;
     online = ok;

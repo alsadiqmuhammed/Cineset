@@ -249,20 +249,28 @@ class Patient {
 
   /// رقم هاتف ثاني.
   String phone2;
+
   /// العنوان.
   String address;
+
   /// المهنة.
   String job;
+
   /// الإيميل.
   String email;
+
   /// رقم الملف الورقي بالعيادة.
   String fileNo;
+
   /// المعرّف بالنظام القديم (يمنع التكرار وقت الاستيراد).
   String externalId;
+
   /// أمراض مزمنة (ضغط، سكر...).
   String conditions;
+
   /// حساسية من أدوية أو مواد.
   String allergies;
+
   /// أدوية يستعملها حالياً.
   String medications;
 

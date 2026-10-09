@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 
@@ -69,6 +70,8 @@ class PhotoMissing implements Exception {
 }
 
 Future<ui.Image> loadImage(String path) async {
+  // بالويب الصور بالتخزين وما تنقرا بكسلاتها هنا (التصاميم من التلفون).
+  if (kIsWeb) throw PhotoMissing(path);
   final cached = _cache[path];
   if (cached != null) {
     _recent

@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 import 'package:flutter/painting.dart';
 
 import 'models.dart';
@@ -130,8 +132,11 @@ class SyncEngine {
 
   String get _prefix => '${store.root.path}/';
 
-  String _toRemote(String json) => json.replaceAll('"$_prefix', '"@/');
-  String _toLocal(String json) => json.replaceAll('"@/', '"$_prefix');
+  // بالويب المسارات تبقى نسبية والصور تنعرض من التخزين مباشرة.
+  String _toRemote(String json) =>
+      kIsWeb ? json : json.replaceAll('"$_prefix', '"@/');
+  String _toLocal(String json) =>
+      kIsWeb ? json : json.replaceAll('"@/', '"$_prefix');
 
   static final _ref = RegExp(r'@/photos/([^"\\]+)');
 
@@ -220,7 +225,7 @@ class SyncEngine {
     _remoteDoctors.clear();
     _orphans.clear();
     _uploaded.clear();
-    if (await _stateFile.exists()) {
+    if (!kIsWeb && await _stateFile.exists()) {
       try {
         final j = jsonDecode(await _stateFile.readAsString()) as Map;
         for (final k in _kinds) {
@@ -427,6 +432,7 @@ class SyncEngine {
   }
 
   Future<void> _downloadMissing(String s) async {
+    if (kIsWeb) return;
     final names = <String>{};
     for (final k in _kinds) {
       for (final l in _localDocs(k).values) {
@@ -496,7 +502,7 @@ class SyncEngine {
         }
       }
       var offline = false;
-      for (final n in refs) {
+      for (final n in kIsWeb ? const <String>[] : refs) {
         if (_uploaded.contains(n)) continue;
         final f = File('${store.photosDir.path}/$n');
         if (!f.existsSync()) continue;
@@ -523,7 +529,7 @@ class SyncEngine {
   }
 
   Future<void> _saveState() async {
-    if (_section == null) return;
+    if (_section == null || kIsWeb) return;
     await _stateFile.writeAsString(
       jsonEncode({
         'known': {for (final k in _kinds) k: _known[k]!.toList()},

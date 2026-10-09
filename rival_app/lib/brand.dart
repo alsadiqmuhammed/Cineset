@@ -177,6 +177,9 @@ class Brand extends ThemeExtension<Brand> {
           TargetPlatform.android: GlassPageTransitionsBuilder(),
           TargetPlatform.iOS: GlassPageTransitionsBuilder(),
           TargetPlatform.linux: GlassPageTransitionsBuilder(),
+          TargetPlatform.macOS: GlassPageTransitionsBuilder(),
+          TargetPlatform.windows: GlassPageTransitionsBuilder(),
+          TargetPlatform.fuchsia: GlassPageTransitionsBuilder(),
         },
       ),
       colorScheme: scheme,
@@ -675,7 +678,14 @@ class GlassBackdrop extends StatelessWidget {
               ],
             ),
           ),
-          child: child,
+          child: MediaQuery.sizeOf(context).width > 1320
+              ? Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1280),
+                    child: child,
+                  ),
+                )
+              : child,
         ),
       ),
     );

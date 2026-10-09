@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../brand.dart';
@@ -250,17 +251,24 @@ class DashboardScreen extends StatelessWidget {
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: NeuButton(
-                          icon: Icons.auto_awesome_outlined,
-                          label: 'القوالب',
-                          tint: b.isDark ? b.accent : b.text,
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const OverlaysScreen(),
-                            ),
-                          ),
-                        ),
+                        child: kIsWeb
+                            ? NeuButton(
+                                icon: Icons.insights_outlined,
+                                label: 'التقارير',
+                                tint: b.isDark ? b.accent : b.text,
+                                onTap: () => onGo(3),
+                              )
+                            : NeuButton(
+                                icon: Icons.auto_awesome_outlined,
+                                label: 'القوالب',
+                                tint: b.isDark ? b.accent : b.text,
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const OverlaysScreen(),
+                                  ),
+                                ),
+                              ),
                       ),
                     ],
                   ),

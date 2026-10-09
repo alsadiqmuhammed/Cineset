@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -40,7 +38,7 @@ class _DoctorEditScreenState extends State<DoctorEditScreen> {
   Future<String?> _pickPng() async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (picked == null) return null;
-    return Store.instance.importPhoto(picked.path);
+    return importPicked(picked);
   }
 
   @override
@@ -59,7 +57,7 @@ class _DoctorEditScreenState extends State<DoctorEditScreen> {
       imageQuality: 90,
     );
     if (picked == null) return;
-    final path = await Store.instance.importPhoto(picked.path);
+    final path = await importPicked(picked);
     setState(() => _photo = path);
   }
 
@@ -310,9 +308,9 @@ class _PngTile extends StatelessWidget {
                       ),
                     ],
                   )
-                : Image.file(
+                : StoredImage(
                     errorBuilder: missingPhoto,
-                    File(path!),
+                    path!,
                     fit: BoxFit.contain,
                   ),
           ),

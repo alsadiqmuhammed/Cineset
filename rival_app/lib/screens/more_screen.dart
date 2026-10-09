@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -238,15 +239,16 @@ class MoreScreen extends StatelessWidget {
                 ),
               SectionHeader('المظهر'),
               const _AppearanceCard(),
-              SectionHeader('التصاميم'),
-              _Tile(
-                Icons.filter_frames_outlined,
-                'قوالب PNG (${ar(store.overlays.length)})',
-                () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const OverlaysScreen()),
+              if (!kIsWeb) SectionHeader('التصاميم'),
+              if (!kIsWeb)
+                _Tile(
+                  Icons.filter_frames_outlined,
+                  'قوالب PNG (${ar(store.overlays.length)})',
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const OverlaysScreen()),
+                  ),
                 ),
-              ),
               SectionHeader('البيانات والخصوصية'),
               const _CloudCard(),
               _Tile(
@@ -261,37 +263,39 @@ class MoreScreen extends StatelessWidget {
                 () => importExcel(context),
                 subtitle: 'من جدول العيادة القديم أو ملف مصدّر',
               ),
-              _Tile(
-                Icons.cloud_upload_outlined,
-                'نسخة احتياطية (القسمين)',
-                () => _backup(context),
-                subtitle: store.isDoctorAccount
-                    ? 'ملف zip بمراجعينك وحالاتك وصورهم.'
-                    : 'ملف zip بكل المراجعين والصور. احفظه بمكان آمن.',
-              ),
+              if (!kIsWeb)
+                _Tile(
+                  Icons.cloud_upload_outlined,
+                  'نسخة احتياطية (القسمين)',
+                  () => _backup(context),
+                  subtitle: store.isDoctorAccount
+                      ? 'ملف zip بمراجعينك وحالاتك وصورهم.'
+                      : 'ملف zip بكل المراجعين والصور. احفظه بمكان آمن.',
+                ),
               // الاسترجاع يبدّل بيانات العيادة كلها، فهو للإدارة بس.
-              if (!store.isDoctorAccount)
+              if (!store.isDoctorAccount && !kIsWeb)
                 _Tile(
                   Icons.settings_backup_restore,
                   'استرجاع نسخة',
                   () => _restore(context),
                 ),
-              BrandCard(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: SwitchListTile(
-                  value: store.lockEnabled,
-                  onChanged: (v) => _toggleLock(context, v),
-                  secondary: Icon(Icons.fingerprint, color: b.primary),
-                  title: const Text(
-                    'قفل التطبيق',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: Text(
-                    'بالبصمة أو رمز التلفون، لحماية صور المراجعين',
-                    style: TextStyle(color: b.muted, fontSize: 12),
+              if (!kIsWeb)
+                BrandCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: SwitchListTile(
+                    value: store.lockEnabled,
+                    onChanged: (v) => _toggleLock(context, v),
+                    secondary: Icon(Icons.fingerprint, color: b.primary),
+                    title: const Text(
+                      'قفل التطبيق',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text(
+                      'بالبصمة أو رمز التلفون، لحماية صور المراجعين',
+                      style: TextStyle(color: b.muted, fontSize: 12),
+                    ),
                   ),
                 ),
-              ),
               const SizedBox(height: 22),
               Container(
                 decoration: BoxDecoration(
