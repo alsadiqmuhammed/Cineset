@@ -38,6 +38,10 @@ String reminderText(Brand b, Patient p, CaseRecord c) {
 Future<void> callPhone(String phone) =>
     launchUrl(Uri.parse('tel:${phone.replaceAll(' ', '')}'));
 
+/// مجموع المتبقي على المراجع بكل حالاته.
+int _due(Patient p) =>
+    p.cases.fold(0, (s, c) => s + ((c.due ?? 0) > 0 ? c.due! : 0));
+
 class PatientScreen extends StatelessWidget {
   final Patient patient;
   const PatientScreen({super.key, required this.patient});
@@ -154,6 +158,12 @@ class PatientScreen extends StatelessWidget {
                         '${b.f('مراجع', 'مراجعة')} منذ ${arDate(patient.created)}',
                         bg: Colors.white.withValues(alpha: 0.16),
                       ),
+                      if (_due(patient) > 0)
+                        Pill(
+                          'متبقي ${money(_due(patient))}',
+                          bg: const Color(0xFFFFE3DE),
+                          fg: const Color(0xFFB3261E),
+                        ),
                     ],
                   ),
                   if (patient.phone.isNotEmpty) ...[
