@@ -9,6 +9,7 @@ import '../main.dart';
 import '../store.dart';
 import '../sync.dart';
 import 'common.dart';
+import 'accounts_screen.dart';
 import 'design_controls.dart';
 import 'doctor_profile_screen.dart';
 import 'doctors_screen.dart';
@@ -130,18 +131,20 @@ class MoreScreen extends StatelessWidget {
                             label: const Text('الخريطة'),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () => showModalBottomSheet(
-                              context: context,
-                              isScrollControlled: true,
-                              builder: (_) => const _ClinicSheet(),
+                        if (!store.isDoctorAccount) ...[
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => showModalBottomSheet(
+                                context: context,
+                                isScrollControlled: true,
+                                builder: (_) => const _ClinicSheet(),
+                              ),
+                              icon: const Icon(Icons.edit_outlined),
+                              label: const Text('تعديل'),
                             ),
-                            icon: const Icon(Icons.edit_outlined),
-                            label: const Text('تعديل'),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ],
@@ -168,6 +171,16 @@ class MoreScreen extends StatelessWidget {
                   MaterialPageRoute(builder: (_) => const DoctorsScreen()),
                 ),
               ),
+              if (Cloud.instance.signedIn && Cloud.instance.isAdmin)
+                _Tile(
+                  Icons.manage_accounts_outlined,
+                  'حسابات الدخول',
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AccountsScreen()),
+                  ),
+                  subtitle: 'حساب لكل طبيب، يشوف بيه حالاته بس',
+                ),
               SectionHeader('التصاميم'),
               _Tile(
                 Icons.filter_frames_outlined,
@@ -183,13 +196,17 @@ class MoreScreen extends StatelessWidget {
                 Icons.cloud_upload_outlined,
                 'نسخة احتياطية (القسمين)',
                 () => _backup(context),
-                subtitle: 'ملف zip بكل المراجعين والصور. احفظه بمكان آمن.',
+                subtitle: store.isDoctorAccount
+                    ? 'ملف zip بمراجعينك وحالاتك وصورهم.'
+                    : 'ملف zip بكل المراجعين والصور. احفظه بمكان آمن.',
               ),
-              _Tile(
-                Icons.settings_backup_restore,
-                'استرجاع نسخة',
-                () => _restore(context),
-              ),
+              // الاسترجاع يبدّل بيانات العيادة كلها، فهو للإدارة بس.
+              if (!store.isDoctorAccount)
+                _Tile(
+                  Icons.settings_backup_restore,
+                  'استرجاع نسخة',
+                  () => _restore(context),
+                ),
               BrandCard(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: SwitchListTile(

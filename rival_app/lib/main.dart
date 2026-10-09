@@ -38,10 +38,48 @@ class RivalAppState extends State<RivalApp> {
   Section? _section;
   bool _opening = false;
 
+  String? _account = Store.instance.account;
+
   @override
   void initState() {
     super.initState();
-    if (widget.initial != null) choose(widget.initial!);
+    Cloud.instance.addListener(_accountChanged);
+    if (widget.initial != null) {
+      choose(widget.initial!);
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _autoOpen());
+    }
+  }
+
+  @override
+  void dispose() {
+    Cloud.instance.removeListener(_accountChanged);
+    super.dispose();
+  }
+
+  /// دخول أو خروج: نرجع لاختيار القسم ببيانات الحساب الجديد.
+  void _accountChanged() {
+    if (Store.instance.account == _account) return;
+    _account = Store.instance.account;
+    if (!mounted) return;
+    setState(() => _section = null);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _autoOpen());
+  }
+
+  /// الطبيب اللي إله قسم واحد يدخل عليه مباشرة.
+  void _autoOpen() {
+    if (_section != null || _opening || _needsLogin) return;
+    final allowed = allowedSections;
+    if (allowed.length == 1) choose(allowed.first);
+  }
+
+  List<Section> get allowedSections {
+    final m = Cloud.instance.member;
+    if (m == null || m.isAdmin) return Section.values;
+    return [
+      for (final s in Section.values)
+        if (m.canOpen(s.name)) s,
+    ];
   }
 
   Future<void> choose(Section s) async {
@@ -80,9 +118,21 @@ class RivalAppState extends State<RivalApp> {
         ),
         child: LockGate(
           child: _needsLogin
-              ? LoginScreen(onDone: () => setState(() {}))
+              ? LoginScreen(
+                  onDone: () {
+                    _account = Store.instance.account;
+                    setState(() {});
+                    WidgetsBinding.instance.addPostFrameCallback(
+                      (_) => _autoOpen(),
+                    );
+                  },
+                )
               : s == null
-              ? SectionPicker(onChosen: choose, busy: _opening)
+              ? SectionPicker(
+                  onChosen: choose,
+                  busy: _opening,
+                  allowed: allowedSections,
+                )
               : HomeShell(key: ValueKey(s)),
         ),
       ),

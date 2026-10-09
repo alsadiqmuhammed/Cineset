@@ -319,15 +319,19 @@ class _CaseScreenState extends State<CaseScreen> {
                       runSpacing: 6,
                       children: [
                         for (final d in store.doctors)
-                          ChoiceChip(
-                            avatar: DoctorAvatar(d, size: 22),
-                            label: Text(d.name),
-                            selected: c.doctorId == d.id,
-                            onSelected: (v) {
-                              c.doctorId = v ? d.id : null;
-                              _save();
-                            },
-                          ),
+                          if (!store.isDoctorAccount || d.id == c.doctorId)
+                            ChoiceChip(
+                              avatar: DoctorAvatar(d, size: 22),
+                              label: Text(d.name),
+                              selected: c.doctorId == d.id,
+                              // الطبيب ما ينقل حالته لغيره؛ الإدارة تنقلها.
+                              onSelected: store.isDoctorAccount
+                                  ? null
+                                  : (v) {
+                                      c.doctorId = v ? d.id : null;
+                                      _save();
+                                    },
+                            ),
                       ],
                     ),
                   ],

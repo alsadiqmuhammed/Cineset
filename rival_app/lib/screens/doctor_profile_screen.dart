@@ -42,16 +42,17 @@ class DoctorProfileScreen extends StatelessWidget {
                 backgroundColor: b.primaryDeep,
                 foregroundColor: Colors.white,
                 actions: [
-                  IconButton(
-                    tooltip: 'تعديل',
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => DoctorEditScreen(doctor: doctor),
+                  if (!store.isDoctorAccount || store.myDoctorId == doctor.id)
+                    IconButton(
+                      tooltip: 'تعديل',
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => DoctorEditScreen(doctor: doctor),
+                        ),
                       ),
+                      icon: const Icon(Icons.edit_outlined),
                     ),
-                    icon: const Icon(Icons.edit_outlined),
-                  ),
                   IconButton(
                     tooltip: 'تقرير PDF',
                     onPressed: () => shareReport(
@@ -155,20 +156,22 @@ class DoctorProfileScreen extends StatelessWidget {
                     ],
                     Row(
                       children: [
-                        Expanded(
-                          child: isMe
-                              ? FilledButton.tonalIcon(
-                                  onPressed: () => store.setActiveDoctor(null),
-                                  icon: const Icon(Icons.verified),
-                                  label: const Text('هذا ملفي'),
-                                )
-                              : FilledButton.icon(
-                                  onPressed: () =>
-                                      store.setActiveDoctor(doctor),
-                                  icon: const Icon(Icons.how_to_reg),
-                                  label: const Text('هذا أنا'),
-                                ),
-                        ),
+                        if (!store.isDoctorAccount)
+                          Expanded(
+                            child: isMe
+                                ? FilledButton.tonalIcon(
+                                    onPressed: () =>
+                                        store.setActiveDoctor(null),
+                                    icon: const Icon(Icons.verified),
+                                    label: const Text('هذا ملفي'),
+                                  )
+                                : FilledButton.icon(
+                                    onPressed: () =>
+                                        store.setActiveDoctor(doctor),
+                                    icon: const Icon(Icons.how_to_reg),
+                                    label: const Text('هذا أنا'),
+                                  ),
+                          ),
                         if (doctor.phone.isNotEmpty) ...[
                           const SizedBox(width: 8),
                           IconButton.filledTonal(

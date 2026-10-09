@@ -19,6 +19,43 @@ const _options = FirebaseOptions(
   storageBucket: 'rival-26719.firebasestorage.app',
 );
 
+/// عضو بالعيادة (وثيقة members/{email}).
+/// role: admin يشوف كل شي ويدير الحسابات، doctor يشوف بس حالاته.
+/// dental / beauty: رقم ملف الطبيب بكل قسم (الطبيب ما يفتح قسم ما إله بيه ملف).
+class Member {
+  final String email;
+  final String name;
+  final bool isAdmin;
+  final Map<String, String> doctorIds;
+  const Member({
+    required this.email,
+    this.name = '',
+    this.isAdmin = false,
+    this.doctorIds = const {},
+  });
+
+  String? doctorFor(String section) => doctorIds[section];
+  bool canOpen(String section) => isAdmin || doctorFor(section) != null;
+
+  /// وثائق النسخة الأولى ما بيها role: كانت كلها للإدارة.
+  factory Member.fromJson(String email, Map<String, dynamic> j) => Member(
+    email: email,
+    name: (j['name'] as String?) ?? '',
+    isAdmin: (j['role'] as String?) != 'doctor',
+    doctorIds: {
+      for (final s in const ['dental', 'beauty'])
+        if (j[s] is String && (j[s] as String).isNotEmpty) s: j[s] as String,
+    },
+  );
+
+  Map<String, Object?> toJson() => {
+    'name': name,
+    'role': isAdmin ? 'admin' : 'doctor',
+    'dental': doctorIds['dental'],
+    'beauty': doctorIds['beauty'],
+  };
+}
+
 /// قاعدة البيانات الموحدة: الدخول بحساب العيادة، وتشغيل المزامنة للقسم المفتوح.
 /// إذا Firebase ما اشتغل (مثلاً بالاختبارات) التطبيق يكمل على بيانات الجهاز.
 class Cloud extends ChangeNotifier {
@@ -30,8 +67,12 @@ class Cloud extends ChangeNotifier {
   String? detail;
   SyncEngine? _engine;
 
+  /// صلاحيات الحساب المسجل (تنقرا من members بعد الدخول).
+  Member? member;
+
   User? get user => available ? FirebaseAuth.instance.currentUser : null;
-  bool get signedIn => user != null;
+  bool get signedIn => user != null && member != null;
+  bool get isAdmin => member?.isAdmin ?? true;
 
   Future<void> init() async {
     try {
@@ -40,6 +81,30 @@ class Cloud extends ChangeNotifier {
     } catch (e) {
       debugPrint('Firebase: $e');
       available = false;
+      return;
+    }
+    // مسجل من قبل: نقرا صلاحياته (من الذاكرة إذا ماكو إنترنت).
+    if (user != null) {
+      member = await _loadMember();
+      if (member == null) {
+        await FirebaseAuth.instance.signOut();
+      } else {
+        await Store.instance.useAccount(user!.uid);
+      }
+    }
+  }
+
+  Future<Member?> _loadMember() async {
+    final email = user?.email?.toLowerCase();
+    if (email == null) return null;
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('members')
+          .doc(email)
+          .get();
+      return doc.exists ? Member.fromJson(email, doc.data()!) : null;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -67,6 +132,19 @@ class Cloud extends ChangeNotifier {
       await FirebaseAuth.instance.signOut();
       return problem;
     }
+    member = await _loadMember();
+    final m = member;
+    if (m == null) {
+      await FirebaseAuth.instance.signOut();
+      return 'ما گدرنا نقرا صلاحيات الحساب. جرب مرة ثانية.';
+    }
+    if (!m.isAdmin && m.doctorIds.isEmpty) {
+      member = null;
+      await FirebaseAuth.instance.signOut();
+      return 'الحساب مضاف كطبيب، بس ما مربوط بملف طبيب. خلي المسؤول يربطه من '
+          '"المزيد ← حسابات الأطباء".';
+    }
+    await Store.instance.useAccount(user!.uid);
     notifyListeners();
     return null;
   }
@@ -102,16 +180,23 @@ class Cloud extends ChangeNotifier {
     await detach();
     Store.instance.sync = null;
     if (available) await FirebaseAuth.instance.signOut();
+    member = null;
+    await Store.instance.useAccount(null);
     notifyListeners();
   }
 
   /// يشغّل المزامنة للقسم المفتوح بالمتجر.
   Future<void> attach(Store store) async {
-    if (!signedIn) return;
+    final m = member;
+    if (!signedIn || m == null) return;
     await detach();
+    final section = store.section.name;
+    store.myDoctorId = m.isAdmin ? null : m.doctorFor(section);
+    if (!m.canOpen(section)) return;
     final engine = SyncEngine(
       store,
       FirebaseBackend(),
+      doctorId: m.isAdmin ? null : m.doctorFor(section),
       onStatus: (s, [d]) {
         status = s;
         detail = d;
@@ -130,6 +215,90 @@ class Cloud extends ChangeNotifier {
 
   /// يرفع كل شي هسه (من زر "زامن الآن").
   Future<void> syncNow() async => _engine?.push();
+
+  // ---------- إدارة الحسابات (للإدارة بس) ----------
+
+  CollectionReference<Map<String, dynamic>> get _members =>
+      FirebaseFirestore.instance.collection('members');
+
+  Stream<List<Member>> watchMembers() => _members.snapshots().map(
+    (q) =>
+        [for (final d in q.docs) Member.fromJson(d.id, d.data())]
+          ..sort((a, b) => a.email.compareTo(b.email)),
+  );
+
+  /// أطباء قسم من قاعدة البيانات (حتى نربط الحساب بملف بقسم ما مفتوح هسه).
+  Future<List<(String, String)>> doctorsOf(String section) async {
+    final q = await FirebaseFirestore.instance
+        .collection('sections')
+        .doc(section)
+        .collection('doctors')
+        .get();
+    return [
+      for (final d in q.docs) (d.id, (d.data()['label'] as String?) ?? d.id),
+    ]..sort((a, b) => a.$2.compareTo(b.$2));
+  }
+
+  /// يسوي حساب دخول جديد (إذا ما موجود) ويضيفه للأعضاء.
+  /// الحساب ينسوى بنسخة Firebase ثانية حتى ما يطلع المسؤول من حسابه.
+  Future<String?> saveMember(Member m, {String? password}) async {
+    final email = m.email.trim().toLowerCase();
+    if (password != null && password.isNotEmpty) {
+      FirebaseApp helper;
+      try {
+        helper = Firebase.app('accounts');
+      } catch (_) {
+        helper = await Firebase.initializeApp(
+          name: 'accounts',
+          options: _options,
+        );
+      }
+      final auth = FirebaseAuth.instanceFor(app: helper);
+      try {
+        await auth.createUserWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+      } on FirebaseAuthException catch (e) {
+        if (e.code != 'email-already-in-use') {
+          return switch (e.code) {
+            'weak-password' => 'الرمز ضعيف. خليه ٦ أحرف أو أكثر',
+            'invalid-email' => 'الإيميل مو صحيح',
+            'network-request-failed' => 'ماكو إنترنت',
+            _ => 'ما انسوى الحساب: ${e.message}',
+          };
+        }
+      } finally {
+        await auth.signOut();
+      }
+    }
+    try {
+      await _members
+          .doc(email)
+          .set(
+            Member(
+              email: email,
+              name: m.name,
+              isAdmin: m.isAdmin,
+              doctorIds: m.doctorIds,
+            ).toJson(),
+          );
+    } on FirebaseException catch (e) {
+      return 'ما انحفظت الصلاحيات (${e.code})';
+    }
+    return null;
+  }
+
+  Future<void> removeMember(String email) => _members.doc(email).delete();
+
+  Future<String?> sendPasswordReset(String email) async {
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return 'ما انرسل: ${e.message}';
+    }
+  }
 }
 
 /// هل الجهاز متصل بالإنترنت؟ يفحص كل ١٠ ثواني (وبسرعة لما يتغير الحال).
@@ -172,7 +341,7 @@ class Net extends ChangeNotifier {
 }
 
 /// Firestore للوثائق وStorage للصور:
-/// sections/{dental|beauty}/{patients|doctors|meta}/{id} و sections/{s}/photos/{name}
+/// sections/{dental|beauty}/{people|cases|doctors|meta}/{id} و sections/{s}/photos/{name}
 class FirebaseBackend implements SyncBackend {
   final _db = FirebaseFirestore.instance;
   final _files = FirebaseStorage.instance;
@@ -180,17 +349,40 @@ class FirebaseBackend implements SyncBackend {
   CollectionReference<Map<String, dynamic>> _col(String s, String k) =>
       _db.collection('sections').doc(s).collection(k);
 
+  static RemoteDoc? _doc(DocumentSnapshot<Map<String, dynamic>> d) {
+    final data = d.data();
+    if (data == null || data['json'] is! String) return null;
+    return RemoteDoc(d.id, data['json'] as String, {
+      for (final k in const ['doctors', 'doctorId', 'patientId'])
+        if (data.containsKey(k)) k: data[k],
+    });
+  }
+
   @override
-  Stream<RemoteSnapshot> watch(String section, String kind) =>
-      _col(section, kind)
-          .snapshots(includeMetadataChanges: true)
-          .map(
-            (q) => RemoteSnapshot([
-              for (final d in q.docs)
-                if (d.data()['json'] is String)
-                  RemoteDoc(d.id, d.data()['json'] as String),
-            ], fromCache: q.metadata.isFromCache),
-          );
+  Stream<RemoteSnapshot> watch(String section, String kind, {Scope? scope}) {
+    Query<Map<String, dynamic>> q = _col(section, kind);
+    if (scope != null) {
+      q = scope.contains
+          ? q.where(scope.field, arrayContains: scope.value)
+          : q.where(scope.field, isEqualTo: scope.value);
+    }
+    return q
+        .snapshots(includeMetadataChanges: true)
+        .map(
+          (q) => RemoteSnapshot([
+            for (final d in q.docs) ?_doc(d),
+          ], fromCache: q.metadata.isFromCache),
+        );
+  }
+
+  @override
+  Future<List<RemoteDoc>> fetch(String section, String kind) async {
+    final q = await _col(
+      section,
+      kind,
+    ).get(const GetOptions(source: Source.server));
+    return [for (final d in q.docs) ?_doc(d)];
+  }
 
   @override
   Future<void> put(
@@ -199,9 +391,11 @@ class FirebaseBackend implements SyncBackend {
     String id,
     String json, {
     String label = '',
+    Map<String, Object?> fields = const {},
   }) => _col(section, kind).doc(id).set({
     'json': json,
     'label': label,
+    ...fields,
     'by': FirebaseAuth.instance.currentUser?.email,
     'updatedAt': FieldValue.serverTimestamp(),
   });

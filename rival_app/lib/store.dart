@@ -16,6 +16,11 @@ class Store extends ChangeNotifier {
   Store._();
   static final instance = Store._();
 
+  /// مجلد التطبيق بالجهاز (الإعدادات العامة هنا).
+  late Directory device;
+
+  /// مجلد البيانات: نفس [device] بدون حساب، أو مجلد خاص بكل حساب
+  /// (accounts/{uid}) حتى لو طبيبين يستخدمون نفس التلفون ما يشوف واحد بيانات الثاني.
   late Directory base;
   late Section section;
   Section? _opened;
@@ -31,6 +36,13 @@ class Store extends ChangeNotifier {
   /// اختار يشتغل بدون حساب (بيانات الجهاز بس).
   bool cloudSkipped = false;
 
+  /// الحساب المسجل (null = بيانات الجهاز بدون حساب).
+  String? account;
+
+  /// إذا الحساب لطبيب: ملفه بهذا القسم. يشوف ويضيف بس حالاته.
+  String? myDoctorId;
+  bool get isDoctorAccount => myDoctorId != null;
+
   Brand get brand => Brand.of(section);
   Directory get root => Directory('${base.path}/${section.name}');
   Directory get photosDir => Directory('${root.path}/photos');
@@ -39,11 +51,14 @@ class Store extends ChangeNotifier {
   File get _db => File('${root.path}/patients.json');
   File get _doctorsFile => File('${root.path}/doctors.json');
   File get _clinicFile => File('${root.path}/clinic.json');
-  File get _settingsFile => File('${base.path}/settings.json');
+  File get _settingsFile => File('${device.path}/settings.json');
 
   /// يجهّز المجلد الأساسي ويقرأ الإعدادات العامة (القفل).
   Future<void> init({Directory? dir}) async {
-    base = dir ?? await getApplicationDocumentsDirectory();
+    device = dir ?? await getApplicationDocumentsDirectory();
+    base = device;
+    account = null;
+    myDoctorId = null;
     _opened = null;
     await _migrateV1();
     if (await _settingsFile.exists()) {
@@ -67,6 +82,20 @@ class Store extends ChangeNotifier {
     cloudSkipped = v;
     await _saveSettings();
     notifyListeners();
+  }
+
+  /// يبدّل مجلد البيانات للحساب (أو يرجع لبيانات الجهاز). القسم ينفتح من جديد.
+  Future<void> useAccount(String? uid) async {
+    if (uid == account && _opened != null) return;
+    account = uid;
+    base = uid == null ? device : Directory('${device.path}/accounts/$uid');
+    await base.create(recursive: true);
+    myDoctorId = null;
+    _opened = null;
+    patients.clear();
+    doctors.clear();
+    overlays.clear();
+    clinic = ClinicInfo();
   }
 
   /// النسخة الأولى كانت تحفظ بالمجلد الأساسي مباشرة؛ ننقلها لقسم الأسنان.
@@ -103,12 +132,14 @@ class Store extends ChangeNotifier {
     if (await _doctorsFile.exists()) {
       final data = jsonDecode(await _doctorsFile.readAsString()) as List;
       doctors.addAll(data.map((e) => Doctor.fromJson(e)));
-    } else {
+    } else if (account == null) {
+      // بالحساب الأطباء ينزلون من قاعدة البيانات، فما نزرع أسماء افتراضية
+      // ممكن تنكتب فوق التعديلات.
       doctors.addAll(_seedDoctors(s));
     }
     clinic = await _clinicFile.exists()
         ? ClinicInfo.fromJson(jsonDecode(await _clinicFile.readAsString()))
-        : _seedClinic();
+        : (account == null ? _seedClinic() : ClinicInfo());
     overlays
       ..clear()
       ..addAll(
@@ -205,6 +236,7 @@ class Store extends ChangeNotifier {
       created: DateTime.now().millisecondsSinceEpoch,
       gender: gender ?? (section == Section.beauty ? Gender.female : null),
       birthYear: birthYear,
+      createdBy: myDoctorId,
     );
     patients.insert(0, p);
     await save();
@@ -268,7 +300,7 @@ class Store extends ChangeNotifier {
     return null;
   }
 
-  Doctor? get activeDoctor => doctor(clinic.activeDoctorId);
+  Doctor? get activeDoctor => doctor(myDoctorId ?? clinic.activeDoctorId);
 
   Future<void> setActiveDoctor(Doctor? d) async {
     clinic.activeDoctorId = d?.id;

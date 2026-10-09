@@ -122,7 +122,7 @@ class _DoctorEditScreenState extends State<DoctorEditScreen> {
       appBar: AppBar(
         title: Text(widget.doctor == null ? 'طبيب جديد' : 'تعديل الملف'),
         actions: [
-          if (widget.doctor != null)
+          if (widget.doctor != null && !Store.instance.isDoctorAccount)
             IconButton(
               onPressed: _delete,
               icon: const Icon(Icons.delete_outline),

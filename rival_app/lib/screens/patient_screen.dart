@@ -36,7 +36,8 @@ class PatientScreen extends StatelessWidget {
       id: Store.newId(),
       title: r.$1,
       created: DateTime.now().millisecondsSinceEpoch,
-      doctorId: r.$2,
+      // حساب الطبيب: الحالة إله دايماً (قواعد الحماية ما تقبل غير هيچ).
+      doctorId: Store.instance.myDoctorId ?? r.$2,
     );
     patient.cases.insert(0, c);
     await Store.instance.save();
@@ -86,10 +87,18 @@ class PatientScreen extends StatelessWidget {
           actions: [
             PopupMenuButton<String>(
               onSelected: (a) => _menu(context, a),
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'edit', child: Text('تعديل البيانات')),
-                PopupMenuItem(value: 'report', child: Text('تقرير كامل PDF')),
-                PopupMenuItem(value: 'delete', child: Text('حذف')),
+              itemBuilder: (_) => [
+                const PopupMenuItem(
+                  value: 'edit',
+                  child: Text('تعديل البيانات'),
+                ),
+                const PopupMenuItem(
+                  value: 'report',
+                  child: Text('تقرير كامل PDF'),
+                ),
+                // حذف المراجع يمسح حالات أطباء ثانيين، فهو للإدارة بس.
+                if (!Store.instance.isDoctorAccount)
+                  const PopupMenuItem(value: 'delete', child: Text('حذف')),
               ],
             ),
           ],
@@ -378,22 +387,25 @@ class _NewCaseSheetState extends State<_NewCaseSheet> {
                 ),
             ],
           ),
-          const SizedBox(height: 16),
-          Text('الطبيب', style: TextStyle(color: b.muted)),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final d in doctors)
-                ChoiceChip(
-                  avatar: DoctorAvatar(d, size: 22),
-                  label: Text(d.name),
-                  selected: _doctor == d.id,
-                  onSelected: (v) => setState(() => _doctor = v ? d.id : null),
-                ),
-            ],
-          ),
+          if (!Store.instance.isDoctorAccount) ...[
+            const SizedBox(height: 16),
+            Text('الطبيب', style: TextStyle(color: b.muted)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final d in doctors)
+                  ChoiceChip(
+                    avatar: DoctorAvatar(d, size: 22),
+                    label: Text(d.name),
+                    selected: _doctor == d.id,
+                    onSelected: (v) =>
+                        setState(() => _doctor = v ? d.id : null),
+                  ),
+              ],
+            ),
+          ],
           const SizedBox(height: 18),
           FilledButton(onPressed: _submit, child: const Text('إنشاء')),
         ],

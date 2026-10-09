@@ -7,7 +7,15 @@ import 'common.dart';
 class SectionPicker extends StatelessWidget {
   final ValueChanged<Section> onChosen;
   final bool busy;
-  const SectionPicker({super.key, required this.onChosen, this.busy = false});
+
+  /// الأقسام اللي يگدر الحساب يفتحها.
+  final List<Section> allowed;
+  const SectionPicker({
+    super.key,
+    required this.onChosen,
+    this.busy = false,
+    this.allowed = Section.values,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -36,23 +44,25 @@ class SectionPicker extends StatelessWidget {
               style: TextStyle(color: Color(0xFF6B5F57), height: 1.6),
             ),
             const SizedBox(height: 26),
-            _SectionCard(
-              brand: dental,
-              title: 'قسم الأسنان',
-              subtitle: 'عيادة ريڤال · تجميل وتقويم وزراعة الأسنان',
-              logo: dental.logoPrimary,
-              light: true,
-              onTap: busy ? null : () => onChosen(Section.dental),
-            ),
+            if (allowed.contains(Section.dental))
+              _SectionCard(
+                brand: dental,
+                title: 'قسم الأسنان',
+                subtitle: 'عيادة ريڤال · تجميل وتقويم وزراعة الأسنان',
+                logo: dental.logoPrimary,
+                light: true,
+                onTap: busy ? null : () => onChosen(Section.dental),
+              ),
             const SizedBox(height: 18),
-            _SectionCard(
-              brand: beauty,
-              title: 'قسم التجميل',
-              subtitle: 'ريڤال بيوتي · فلر، بوتوكس، نضارة البشرة',
-              logo: beauty.logoReversed,
-              light: false,
-              onTap: busy ? null : () => onChosen(Section.beauty),
-            ),
+            if (allowed.contains(Section.beauty))
+              _SectionCard(
+                brand: beauty,
+                title: 'قسم التجميل',
+                subtitle: 'ريڤال بيوتي · فلر، بوتوكس، نضارة البشرة',
+                logo: beauty.logoReversed,
+                light: false,
+                onTap: busy ? null : () => onChosen(Section.beauty),
+              ),
             if (busy)
               const Padding(
                 padding: EdgeInsets.only(top: 24),

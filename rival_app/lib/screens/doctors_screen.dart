@@ -22,7 +22,7 @@ class DoctorsScreen extends StatelessWidget {
         final doctors = store.doctors;
         return Scaffold(
           appBar: AppBar(title: Text(pickMe ? 'منو إنت؟' : 'الأطباء')),
-          floatingActionButton: pickMe
+          floatingActionButton: pickMe || store.isDoctorAccount
               ? null
               : FloatingActionButton.extended(
                   heroTag: null,

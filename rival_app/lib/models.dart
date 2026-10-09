@@ -167,6 +167,9 @@ class Patient {
   Gender? gender;
   int? birthYear;
   String notes;
+
+  /// الطبيب اللي سجّل المراجع (حتى يشوفه بحسابه قبل ما تنفتحله حالة).
+  String? createdBy;
   final List<CaseRecord> cases;
 
   Patient({
@@ -177,6 +180,7 @@ class Patient {
     this.gender,
     this.birthYear,
     this.notes = '',
+    this.createdBy,
     List<CaseRecord>? cases,
   }) : cases = cases ?? [];
 
@@ -190,6 +194,7 @@ class Patient {
     if (gender != null) 'gender': gender!.name,
     if (birthYear != null) 'birthYear': birthYear,
     'notes': notes,
+    if (createdBy != null) 'createdBy': createdBy,
     'cases': [for (final c in cases) c.toJson()],
   };
 
@@ -201,6 +206,7 @@ class Patient {
     gender: Gender.values.asNameMap()[j['gender']],
     birthYear: j['birthYear'] as int?,
     notes: (j['notes'] as String?) ?? '',
+    createdBy: j['createdBy'] as String?,
     cases: [
       for (final c in (j['cases'] as List? ?? []))
         CaseRecord.fromJson(c as Map<String, dynamic>),
