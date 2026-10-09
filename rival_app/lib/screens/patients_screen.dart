@@ -34,6 +34,8 @@ class _PatientsScreenState extends State<PatientsScreen> {
       birthYear: r.birthYear,
       birthDate: r.birthDate,
     );
+    r.applyTo(p);
+    await Store.instance.save();
     if (!mounted) return;
     Navigator.push(
       context,
@@ -216,14 +218,57 @@ class PatientInput {
   final Gender? gender;
   final int? birthYear;
   final int? birthDate;
+
+  /// الحقول الإضافية (العنوان، المهنة، المعلومات الطبية...).
+  final Map<String, String> extra;
   const PatientInput(
     this.name,
     this.phone,
     this.gender,
     this.birthYear, [
     this.birthDate,
+    this.extra = const {},
   ]);
+
+  /// يحط الحقول الإضافية بالمراجع.
+  void applyTo(Patient p) {
+    p
+      ..phone2 = extra['phone2'] ?? p.phone2
+      ..address = extra['address'] ?? p.address
+      ..job = extra['job'] ?? p.job
+      ..email = extra['email'] ?? p.email
+      ..fileNo = extra['fileNo'] ?? p.fileNo
+      ..conditions = extra['conditions'] ?? p.conditions
+      ..allergies = extra['allergies'] ?? p.allergies
+      ..medications = extra['medications'] ?? p.medications;
+  }
 }
+
+/// الحقول الإضافية بنافذة المراجع: (المفتاح، العنوان، أيقونة).
+const _extraFields = [
+  ('phone2', 'رقم آخر', Icons.phone_outlined),
+  ('address', 'العنوان', Icons.location_on_outlined),
+  ('job', 'المهنة', Icons.work_outline),
+  ('email', 'الإيميل', Icons.alternate_email),
+  ('fileNo', 'رقم الملف', Icons.tag),
+  ('conditions', 'أمراض مزمنة', Icons.monitor_heart_outlined),
+  ('allergies', 'حساسية', Icons.warning_amber_rounded),
+  ('medications', 'أدوية يستعملها', Icons.medication_outlined),
+];
+
+String _extraOf(Patient? p, String key) => p == null
+    ? ''
+    : switch (key) {
+        'phone2' => p.phone2,
+        'address' => p.address,
+        'job' => p.job,
+        'email' => p.email,
+        'fileNo' => p.fileNo,
+        'conditions' => p.conditions,
+        'allergies' => p.allergies,
+        'medications' => p.medications,
+        _ => '',
+      };
 
 Future<PatientInput?> showPatientDialog(
   BuildContext context, {
@@ -251,6 +296,10 @@ class _PatientSheetState extends State<_PatientSheet> {
   );
   late Gender? _gender = widget.existing?.gender;
   late DateTime? _birth = widget.existing?.birthday;
+  late final _extra = {
+    for (final (k, _, _) in _extraFields)
+      k: TextEditingController(text: _extraOf(widget.existing, k)),
+  };
 
   Future<void> _pickBirth() async {
     final now = DateTime.now();
@@ -280,6 +329,9 @@ class _PatientSheetState extends State<_PatientSheet> {
     _name.dispose();
     _phone.dispose();
     _age.dispose();
+    for (final c in _extra.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -295,6 +347,7 @@ class _PatientSheetState extends State<_PatientSheet> {
         _gender,
         _birth?.year ?? (age == null ? null : DateTime.now().year - age),
         _birth?.millisecondsSinceEpoch,
+        {for (final e in _extra.entries) e.key: e.value.text.trim()},
       ),
     );
   }
@@ -389,7 +442,44 @@ class _PatientSheetState extends State<_PatientSheet> {
                 ],
               ),
             ],
-            const SizedBox(height: 18),
+            const SizedBox(height: 8),
+            Theme(
+              data: Theme.of(context)
+                  .copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                initiallyExpanded: widget.existing?.hasMedicalAlert ?? false,
+                title: Text(
+                  'معلومات إضافية وطبية',
+                  style: TextStyle(fontWeight: FontWeight.w700, color: b.text),
+                ),
+                subtitle: Text(
+                  'العنوان، المهنة، الأمراض المزمنة، الحساسية، الأدوية',
+                  style: TextStyle(color: b.muted, fontSize: 12),
+                ),
+                children: [
+                  for (final (k, label, icon) in _extraFields) ...[
+                    TextField(
+                      controller: _extra[k],
+                      keyboardType: k == 'phone2'
+                          ? TextInputType.phone
+                          : k == 'email'
+                          ? TextInputType.emailAddress
+                          : TextInputType.text,
+                      textDirection: k == 'phone2' || k == 'email'
+                          ? TextDirection.ltr
+                          : null,
+                      decoration: InputDecoration(
+                        labelText: label,
+                        prefixIcon: Icon(icon, size: 20),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
             FilledButton(onPressed: _submit, child: const Text('حفظ')),
           ],
         ),

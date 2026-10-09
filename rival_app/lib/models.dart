@@ -247,6 +247,25 @@ class Patient {
   int? birthDate;
   String notes;
 
+  /// رقم هاتف ثاني.
+  String phone2;
+  /// العنوان.
+  String address;
+  /// المهنة.
+  String job;
+  /// الإيميل.
+  String email;
+  /// رقم الملف الورقي بالعيادة.
+  String fileNo;
+  /// المعرّف بالنظام القديم (يمنع التكرار وقت الاستيراد).
+  String externalId;
+  /// أمراض مزمنة (ضغط، سكر...).
+  String conditions;
+  /// حساسية من أدوية أو مواد.
+  String allergies;
+  /// أدوية يستعملها حالياً.
+  String medications;
+
   /// الطبيب اللي سجّل المراجع (حتى يشوفه بحسابه قبل ما تنفتحله حالة).
   String? createdBy;
   final List<CaseRecord> cases;
@@ -260,9 +279,24 @@ class Patient {
     this.birthYear,
     this.birthDate,
     this.notes = '',
+    this.phone2 = '',
+    this.address = '',
+    this.job = '',
+    this.email = '',
+    this.fileNo = '',
+    this.externalId = '',
+    this.conditions = '',
+    this.allergies = '',
+    this.medications = '',
     this.createdBy,
     List<CaseRecord>? cases,
   }) : cases = cases ?? [];
+
+  /// عنده شي طبي لازم الطبيب ينتبهله.
+  bool get hasMedicalAlert =>
+      conditions.trim().isNotEmpty ||
+      allergies.trim().isNotEmpty ||
+      medications.trim().isNotEmpty;
 
   int? get age {
     final now = DateTime.now();
@@ -314,6 +348,15 @@ class Patient {
     birthYear = o.birthYear;
     birthDate = o.birthDate;
     notes = o.notes;
+    phone2 = o.phone2;
+    address = o.address;
+    job = o.job;
+    email = o.email;
+    fileNo = o.fileNo;
+    externalId = o.externalId;
+    conditions = o.conditions;
+    allergies = o.allergies;
+    medications = o.medications;
     createdBy = o.createdBy;
   }
 
@@ -326,6 +369,15 @@ class Patient {
     if (birthYear != null) 'birthYear': birthYear,
     if (birthDate != null) 'birthDate': birthDate,
     'notes': notes,
+    if (phone2.isNotEmpty) 'phone2': phone2,
+    if (address.isNotEmpty) 'address': address,
+    if (job.isNotEmpty) 'job': job,
+    if (email.isNotEmpty) 'email': email,
+    if (fileNo.isNotEmpty) 'fileNo': fileNo,
+    if (externalId.isNotEmpty) 'externalId': externalId,
+    if (conditions.isNotEmpty) 'conditions': conditions,
+    if (allergies.isNotEmpty) 'allergies': allergies,
+    if (medications.isNotEmpty) 'medications': medications,
     if (createdBy != null) 'createdBy': createdBy,
     'cases': [for (final c in cases) c.toJson()],
   };
@@ -339,6 +391,15 @@ class Patient {
     birthYear: j['birthYear'] as int?,
     birthDate: j['birthDate'] as int?,
     notes: (j['notes'] as String?) ?? '',
+    phone2: (j['phone2'] as String?) ?? '',
+    address: (j['address'] as String?) ?? '',
+    job: (j['job'] as String?) ?? '',
+    email: (j['email'] as String?) ?? '',
+    fileNo: (j['fileNo'] as String?) ?? '',
+    externalId: (j['externalId'] as String?) ?? '',
+    conditions: (j['conditions'] as String?) ?? '',
+    allergies: (j['allergies'] as String?) ?? '',
+    medications: (j['medications'] as String?) ?? '',
     createdBy: j['createdBy'] as String?,
     cases: [
       for (final c in (j['cases'] as List? ?? []))

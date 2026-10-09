@@ -89,6 +89,7 @@ class PatientScreen extends StatelessWidget {
           ..gender = r.gender ?? patient.gender
           ..birthYear = r.birthYear
           ..birthDate = r.birthDate;
+        r.applyTo(patient);
         await Store.instance.save();
       case 'report':
         await shareReport(context, () => patientReport(b, patient));
@@ -208,6 +209,20 @@ class PatientScreen extends StatelessWidget {
                 ],
               ),
             ),
+            if (patient.hasMedicalAlert) ...[
+              const SizedBox(height: 14),
+              _MedicalCard(patient),
+            ],
+            if ([
+              patient.address,
+              patient.job,
+              patient.phone2,
+              patient.fileNo,
+              patient.email,
+            ].any((v) => v.trim().isNotEmpty)) ...[
+              const SizedBox(height: 12),
+              _InfoCard(patient),
+            ],
             SectionHeader('الحالات (${ar(patient.cases.length)})'),
             if (patient.cases.isEmpty)
               EmptyState(
@@ -226,6 +241,123 @@ class PatientScreen extends StatelessWidget {
             _NotesField(patient),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// تنبيه طبي: أمراض مزمنة، حساسية، أدوية.
+class _MedicalCard extends StatelessWidget {
+  final Patient p;
+  const _MedicalCard(this.p);
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    final red = b.isDark ? const Color(0xFFFF8A80) : const Color(0xFFB3261E);
+    Widget row(IconData icon, String label, String value) => Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: red),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 92,
+            child: Text(
+              label,
+              style: TextStyle(color: b.muted, fontSize: 12.5),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: b.text,
+                fontWeight: FontWeight.w700,
+                fontSize: 13.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    return BrandCard(
+      color: red.withValues(alpha: b.isDark ? 0.12 : 0.07),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.health_and_safety_rounded, color: red, size: 20),
+              const SizedBox(width: 6),
+              Text(
+                'تنبيه طبي',
+                style: TextStyle(
+                  color: red,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          if (p.conditions.trim().isNotEmpty)
+            row(Icons.monitor_heart_outlined, 'أمراض مزمنة', p.conditions),
+          if (p.allergies.trim().isNotEmpty)
+            row(Icons.warning_amber_rounded, 'حساسية', p.allergies),
+          if (p.medications.trim().isNotEmpty)
+            row(Icons.medication_outlined, 'أدوية', p.medications),
+        ],
+      ),
+    );
+  }
+}
+
+/// العنوان والمهنة وباقي المعلومات.
+class _InfoCard extends StatelessWidget {
+  final Patient p;
+  const _InfoCard(this.p);
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    final items = [
+      (Icons.location_on_outlined, p.address, false),
+      (Icons.work_outline, p.job, false),
+      (Icons.phone_outlined, p.phone2, true),
+      (Icons.tag, p.fileNo.isEmpty ? '' : 'ملف ${p.fileNo}', false),
+      (Icons.alternate_email, p.email, true),
+    ].where((e) => e.$2.trim().isNotEmpty);
+    return BrandCard(
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 12),
+      child: Column(
+        children: [
+          for (final (icon, text, ltr) in items)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                children: [
+                  Icon(icon, size: 18, color: b.primary),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      text,
+                      textDirection: ltr ? TextDirection.ltr : null,
+                      textAlign: TextAlign.start,
+                      style: TextStyle(color: b.text, fontSize: 13.5),
+                    ),
+                  ),
+                  if (icon == Icons.phone_outlined)
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => callPhone(text),
+                      icon: Icon(Icons.call, size: 18, color: b.primary),
+                    ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

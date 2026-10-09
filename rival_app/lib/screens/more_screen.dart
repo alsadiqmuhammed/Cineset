@@ -9,6 +9,7 @@ import '../main.dart';
 import '../store.dart';
 import '../sync.dart';
 import 'common.dart';
+import 'sheet_screen.dart';
 import 'accounts_screen.dart';
 import 'design_controls.dart';
 import 'doctor_profile_screen.dart';
@@ -248,6 +249,18 @@ class MoreScreen extends StatelessWidget {
               ),
               SectionHeader('البيانات والخصوصية'),
               const _CloudCard(),
+              _Tile(
+                Icons.table_view_outlined,
+                'تصدير Excel',
+                () => exportExcel(context),
+                subtitle: 'كل ${b.patients} والحالات والمبالغ بجدول واحد',
+              ),
+              _Tile(
+                Icons.upload_file_outlined,
+                'استيراد من Excel',
+                () => importExcel(context),
+                subtitle: 'من جدول العيادة القديم أو ملف مصدّر',
+              ),
               _Tile(
                 Icons.cloud_upload_outlined,
                 'نسخة احتياطية (القسمين)',

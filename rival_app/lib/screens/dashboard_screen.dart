@@ -34,6 +34,8 @@ class DashboardScreen extends StatelessWidget {
       birthYear: r.birthYear,
       birthDate: r.birthDate,
     );
+    r.applyTo(p);
+    await Store.instance.save();
     if (!context.mounted) return;
     Navigator.push(
       context,
