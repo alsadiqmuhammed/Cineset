@@ -355,6 +355,6 @@ Future<String?> editElementText(BuildContext context, String initial) async {
       ],
     ),
   );
-  ctl.dispose();
+  disposeLater([ctl]);
   return v;
 }

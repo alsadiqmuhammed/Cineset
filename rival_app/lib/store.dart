@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:archive/archive_io.dart';
 import 'package:flutter/foundation.dart';
@@ -13,6 +14,31 @@ import 'sync.dart';
 /// كل البيانات داخل مساحة التطبيق الخاصة، وكل قسم (أسنان / تجميل) بمجلد مستقل:
 /// ملف المراجعين، الأطباء، معلومات العيادة، الصور، والقوالب.
 /// ما تظهر بألبوم الكاميرا.
+/// يضغط مجلدات الأقسام لملف واحد (يشتغل بخيط منفصل).
+Future<void> _zip(String root, List<String> sections, String out) async {
+  final enc = ZipFileEncoder()..create(out);
+  for (final s in sections) {
+    final d = Directory('$root/$s');
+    if (!await d.exists()) continue;
+    await for (final e in d.list(recursive: true)) {
+      if (e is! File || e.path.contains('/exports/')) continue;
+      if (e.path.endsWith('sync_state.json')) continue;
+      final lower = e.path.toLowerCase();
+      final packed =
+          lower.endsWith('.jpg') ||
+          lower.endsWith('.jpeg') ||
+          lower.endsWith('.png') ||
+          lower.endsWith('.webp');
+      await enc.addFile(
+        e,
+        e.path.substring(root.length + 1),
+        packed ? 0 : null,
+      );
+    }
+  }
+  await enc.close();
+}
+
 class Store extends ChangeNotifier {
   Store._();
   static final instance = Store._();
@@ -149,6 +175,15 @@ class Store extends ChangeNotifier {
     section = s;
     for (final d in [photosDir, overlaysDir, exportsDir]) {
       await d.create(recursive: true);
+    }
+    // الصور والفيديوهات والتقارير المصدّرة مؤقتة (تنحفظ بالمعرض أو تنشارك).
+    final stale = DateTime.now().subtract(const Duration(days: 3));
+    try {
+      for (final f in exportsDir.listSync().whereType<File>()) {
+        if (f.statSync().modified.isBefore(stale)) f.deleteSync();
+      }
+    } catch (_) {
+      // التنظيف مو ضروري.
     }
     patients.clear();
     if (await _db.exists()) {
@@ -395,20 +430,15 @@ class Store extends ChangeNotifier {
   // ---------- النسخ الاحتياطي ----------
 
   /// ملف zip بكل بيانات القسمين (بدون الملفات المصدّرة المؤقتة).
+  /// يشتغل بخيط ثاني حتى ما تعلگ الشاشة، والصور تنحفظ بدون ضغط (هي مضغوطة أصلاً).
   Future<String> exportBackup() async {
+    await flush();
     final stamp = DateTime.now();
     final out =
-        '${exportsDir.path}/rival_backup_${stamp.year}-${stamp.month}-${stamp.day}.zip';
-    final enc = ZipFileEncoder()..create(out);
-    for (final s in Section.values) {
-      final d = Directory('${base.path}/${s.name}');
-      if (!await d.exists()) continue;
-      await for (final e in d.list(recursive: true)) {
-        if (e is! File || e.path.contains('/exports/')) continue;
-        await enc.addFile(e, e.path.substring(base.path.length + 1));
-      }
-    }
-    await enc.close();
+        '${exportsDir.path}/rival_backup_${stamp.year}-${stamp.month}-${stamp.day}_${stamp.hour}${stamp.minute}.zip';
+    final root = base.path;
+    final sections = [for (final s in Section.values) s.name];
+    await Isolate.run(() => _zip(root, sections, out));
     return out;
   }
 

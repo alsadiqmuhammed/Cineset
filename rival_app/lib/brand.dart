@@ -338,6 +338,38 @@ const arMonths = [
   'كانون الأول',
 ];
 
+/// الأرقام العربية (٠-٩ و۰-۹) لأرقام إنكليزية.
+String latinDigits(String s) => s.replaceAllMapped(
+  RegExp('[٠-٩۰-۹]'),
+  (m) =>
+      '${(m[0]!.codeUnitAt(0) - (m[0]!.codeUnitAt(0) >= 0x6F0 ? 0x6F0 : 0x660))}',
+);
+
+/// نص للبحث: بدون تشكيل، والألف والتاء المربوطة والياء بشكل واحد،
+/// حتى "اسراء" تلگى "إسراء" و"فاطمه" تلگى "فاطمة".
+String searchKey(String s) =>
+    latinDigits(s)
+        .replaceAll(RegExp('[\u064B-\u0652\u0640]'), '')
+        .replaceAll(RegExp('[أإآٱ]'), 'ا')
+        .replaceAll('ة', 'ه')
+        .replaceAll('ى', 'ي')
+        .replaceAll(' ', '')
+        .toLowerCase();
+
+/// بداية اليوم (بالتوقيت المحلي) حتى نقارن أيام مو ساعات.
+int dayOf(int ms) {
+  final d = DateTime.fromMillisecondsSinceEpoch(ms);
+  return DateTime(d.year, d.month, d.day).millisecondsSinceEpoch;
+}
+
+/// كم يوم تقويمي من [from] لـ[to] (سالب إذا فات).
+int daysBetween(int from, int to) =>
+    (DateTime.fromMillisecondsSinceEpoch(dayOf(to))
+                .difference(DateTime.fromMillisecondsSinceEpoch(dayOf(from)))
+                .inHours /
+            24)
+        .round();
+
 /// التاريخ ويا الساعة إذا محددة: ١٢ تشرين الأول · ٥:٣٠ م
 String arDateTime(int ms) {
   final d = DateTime.fromMillisecondsSinceEpoch(ms);

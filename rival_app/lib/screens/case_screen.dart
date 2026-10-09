@@ -28,6 +28,9 @@ class CaseScreen extends StatefulWidget {
   State<CaseScreen> createState() => _CaseScreenState();
 }
 
+DateTime _clampDate(DateTime d, DateTime min, DateTime max) =>
+    d.isBefore(min) ? min : (d.isAfter(max) ? max : d);
+
 class _CaseScreenState extends State<CaseScreen> {
   late final _aligner = AutoAligner(Store.instance.brand.alignTarget);
   late final _note = TextEditingController(text: widget.record.note);
@@ -175,7 +178,7 @@ class _CaseScreenState extends State<CaseScreen> {
         ],
       ),
     );
-    ctl.dispose();
+    disposeLater([ctl]);
     if (t == null || t.isEmpty) return;
     c.title = t;
     await _save();
@@ -192,6 +195,14 @@ class _CaseScreenState extends State<CaseScreen> {
       c.visits.add(r);
     }
     c.visits.sort((a, b) => a.date.compareTo(b.date));
+    // زيارة بيوم الموعد أو بعده يعني المراجع إجه: الموعد خلص.
+    final next = c.nextVisit;
+    if (next != null && dayOf(r.date) >= dayOf(next)) {
+      c.nextVisit = null;
+      if (mounted) {
+        toast(context, 'انسجلت الزيارة. حدد الموعد الجاي إذا أكو.');
+      }
+    }
     await _save();
   }
 
@@ -439,8 +450,12 @@ class _CaseScreenState extends State<CaseScreen> {
                           context: context,
                           initialDate: c.nextVisit == null
                               ? now.add(const Duration(days: 7))
-                              : DateTime.fromMillisecondsSinceEpoch(
-                                  c.nextVisit!,
+                              : _clampDate(
+                                  DateTime.fromMillisecondsSinceEpoch(
+                                    c.nextVisit!,
+                                  ),
+                                  DateTime(now.year - 1),
+                                  DateTime(now.year + 3),
                                 ),
                           firstDate: DateTime(now.year - 1),
                           lastDate: DateTime(now.year + 3),

@@ -21,15 +21,61 @@ class MoreScreen extends StatelessWidget {
   const MoreScreen({super.key});
 
   Future<void> _backup(BuildContext context) async {
+    final nav = Navigator.of(context);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Expanded(child: Text('جاري تجهيز النسخة الاحتياطية...')),
+            ],
+          ),
+        ),
+      ),
+    );
+    String? path;
+    Object? error;
     try {
-      final path = await Store.instance.exportBackup();
-      await shareFile(path);
+      path = await Store.instance.exportBackup();
     } catch (e) {
-      if (context.mounted) toast(context, 'ما تمت النسخة: $e');
+      error = e;
+    }
+    nav.pop();
+    if (path != null) {
+      await shareFile(path);
+    } else if (context.mounted) {
+      toast(context, 'ما تمت النسخة: $error');
     }
   }
 
   Future<void> _restore(BuildContext context) async {
+    // بالحساب الاسترجاع ينكتب فوق بيانات العيادة بكل الأجهزة ويمسح الأحدث،
+    // فهو بس لبيانات الجهاز.
+    if (Cloud.instance.signedIn) {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('الاسترجاع ما يشتغل بالحساب'),
+          content: const Text(
+            'بياناتك محفوظة بقاعدة بيانات العيادة وتنزل على أي جهاز تدخل منه. '
+            'الاسترجاع يمسح التعديلات الأحدث من كل الأجهزة، فهو بس لبيانات الجهاز بدون حساب. '
+            'إذا تحتاجه سجّل خروج أولاً.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('تمام'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
     final files = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['zip'],
@@ -269,7 +315,9 @@ class MoreScreen extends StatelessWidget {
               const SizedBox(height: 20),
               Center(
                 child: Text(
-                  '${b.latinName} · البيانات محفوظة على هذا التلفون فقط',
+                  Cloud.instance.signedIn
+                      ? '${b.latinName} · البيانات متزامنة ويا قاعدة بيانات العيادة'
+                      : '${b.latinName} · البيانات محفوظة على هذا التلفون فقط',
                   style: TextStyle(color: b.muted, fontSize: 11),
                 ),
               ),

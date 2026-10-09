@@ -201,7 +201,7 @@ class DoctorProfileScreen extends StatelessWidget {
                       physics: const NeverScrollableScrollPhysics(),
                       mainAxisSpacing: 10,
                       crossAxisSpacing: 10,
-                      childAspectRatio: 1.9,
+                      childAspectRatio: 1.7,
                       children: [
                         StatTile(
                           ar(stats.total),

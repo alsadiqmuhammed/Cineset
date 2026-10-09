@@ -11,7 +11,7 @@ import 'patients_screen.dart';
 
 /// 07xxxxxxxxx -> 9647xxxxxxxxx (للواتساب).
 String internationalPhone(String phone) {
-  final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+  final digits = latinDigits(phone).replaceAll(RegExp(r'[^0-9]'), '');
   if (digits.startsWith('00')) return digits.substring(2);
   if (digits.startsWith('0')) return '964${digits.substring(1)}';
   return digits;
@@ -35,8 +35,9 @@ String reminderText(Brand b, Patient p, CaseRecord c) {
       'إذا تحتاج تأجيل الموعد راسلنا هنا. ننتظرك 🤍';
 }
 
-Future<void> callPhone(String phone) =>
-    launchUrl(Uri.parse('tel:${phone.replaceAll(' ', '')}'));
+Future<void> callPhone(String phone) => launchUrl(
+  Uri.parse('tel:${latinDigits(phone).replaceAll(RegExp(r'[^0-9+]'), '')}'),
+);
 
 /// مجموع المتبقي على المراجع بكل حالاته.
 int _due(Patient p) =>

@@ -508,6 +508,14 @@ class BarRow extends StatelessWidget {
 
 String formatDate(int ms) => arDate(ms);
 
+/// يتخلص من حقول نافذة بعد ما تخلص حركة الإغلاق (قبلها النافذة بعدها ترسمها).
+void disposeLater(List<ChangeNotifier> items) =>
+    Future.delayed(const Duration(milliseconds: 600), () {
+      for (final i in items) {
+        i.dispose();
+      }
+    });
+
 /// مكان صورة ما موجودة بعد (تنزل من جهاز ثاني) أو انحذفت.
 Widget missingPhoto(BuildContext context, Object error, StackTrace? stack) {
   final b = context.brand;

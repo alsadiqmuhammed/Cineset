@@ -25,6 +25,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       listenable: Store.instance,
       builder: (context, _) {
         final store = Store.instance;
+        if (store.doctor(_doctorId) == null) _doctorId = null;
         final s = Stats.of(store, period: _period, doctorId: _doctorId);
         final monthly = Stats.of(store, doctorId: _doctorId).monthly(6);
         return Scaffold(
@@ -59,7 +60,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ),
               const SizedBox(height: 6),
               DropdownButtonFormField<String?>(
-                initialValue: _doctorId,
+                // الطبيب ممكن انحذف أو اختفى بالمزامنة: نرجع لـ"كل الأطباء".
+                key: ValueKey(store.doctor(_doctorId)?.id),
+                initialValue: store.doctor(_doctorId)?.id,
+                isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'الطبيب',
                   contentPadding: EdgeInsets.symmetric(
@@ -73,7 +77,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     child: Text('كل الأطباء'),
                   ),
                   for (final d in store.doctors)
-                    DropdownMenuItem(value: d.id, child: Text(d.name)),
+                    DropdownMenuItem(
+                      value: d.id,
+                      child: Text(d.name, overflow: TextOverflow.ellipsis),
+                    ),
                 ],
                 onChanged: (v) => setState(() => _doctorId = v),
               ),
@@ -84,7 +91,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 physics: const NeverScrollableScrollPhysics(),
                 mainAxisSpacing: 10,
                 crossAxisSpacing: 10,
-                childAspectRatio: 1.9,
+                childAspectRatio: 1.7,
                 children: [
                   StatTile(ar(s.total), 'حالة', Icons.folder_shared_outlined),
                   StatTile(ar(s.patients), b.patients, Icons.people_outline),

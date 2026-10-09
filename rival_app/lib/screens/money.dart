@@ -257,7 +257,6 @@ Future<(int?, String)?> askAmount(
       );
     },
   );
-  amount.dispose();
-  note.dispose();
+  disposeLater([amount, note]);
   return r;
 }

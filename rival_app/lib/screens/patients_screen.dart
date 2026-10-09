@@ -41,10 +41,10 @@ class _PatientsScreenState extends State<PatientsScreen> {
   }
 
   bool _matches(Patient p) {
-    final q = _search.text.trim();
+    final q = searchKey(_search.text.trim());
     if (q.isNotEmpty &&
-        !p.name.contains(q) &&
-        !p.phone.replaceAll(' ', '').contains(q.replaceAll(' ', ''))) {
+        !searchKey(p.name).contains(q) &&
+        !searchKey(p.phone).contains(q)) {
       return false;
     }
     return switch (_filter) {

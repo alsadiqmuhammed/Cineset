@@ -330,4 +330,12 @@ void main() {
       expect(m.map((e) => e.$3), [400000, 0, 250000]);
     });
   });
+
+  test('Arabic digits and spelling variants', () {
+    expect(latinDigits('٠٧٧٠ ١٢٣ ۴۵۶'), '0770 123 456');
+    expect(internationalPhone('٠٧٧٠١٢٣٤٥٦٧'), '9647701234567');
+    expect(searchKey('إسراء'), searchKey('اسراء'));
+    expect(searchKey('فاطمة'), searchKey('فاطمه'));
+    expect(searchKey('٠٧٧٠ ١٢٣'), '0770123');
+  });
 }

@@ -158,7 +158,7 @@ class DashboardScreen extends StatelessWidget {
                   physics: const NeverScrollableScrollPhysics(),
                   mainAxisSpacing: 10,
                   crossAxisSpacing: 10,
-                  childAspectRatio: 0.82,
+                  childAspectRatio: 0.74,
                   children: [
                     _Action(
                       Icons.person_add_alt_1,

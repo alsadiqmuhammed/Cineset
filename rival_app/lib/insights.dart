@@ -37,9 +37,8 @@ class CaseFacts {
       lastVisit: last,
       daysSinceLast: last == null ? null : days(last, n),
       nextVisit: c.nextVisit,
-      daysToNext: c.nextVisit == null
-          ? null
-          : ((c.nextVisit! - n) / 86400000).ceil(),
+      // أيام تقويمية: موعد البارحة الساعة ٥ "فات" من اليوم، مو بعد ٢٤ ساعة.
+      daysToNext: c.nextVisit == null ? null : daysBetween(n, c.nextVisit!),
     );
   }
 }

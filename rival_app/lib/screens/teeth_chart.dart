@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../brand.dart';
 import '../charts.dart';
+import 'common.dart';
 
 /// خريطة الأسنان مرسومة (الفكين واللثة، ٣٢ مكان مع ضروس العقل)، مثل ما
 /// يشوفها الطبيب مقابل المراجع. بدون أرقام. كل مكان يصير لبني أو دائمي،
@@ -286,7 +287,7 @@ class FaceMap extends StatelessWidget {
         ],
       ),
     );
-    ctl.dispose();
+    disposeLater([ctl]);
     if (v != null) onDose(id, v);
   }
 

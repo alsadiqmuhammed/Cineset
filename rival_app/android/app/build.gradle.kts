@@ -29,11 +29,28 @@ android {
         versionName = flutter.versionName
     }
 
+    // مفتاح التوقيع: كل النسخ لازم تنوقّع بنفس المفتاح حتى التحديث ينصب فوق
+    // القديم بدون ما تنمسح بيانات التلفون. الملف ما ينرفع للمستودع
+    // (android/.gitignore)؛ صاحب التطبيق محتفظ بنسخة منه.
+    val rivalKey = rootProject.file("rival-signing.keystore")
+    signingConfigs {
+        if (rivalKey.exists()) {
+            create("rival") {
+                storeFile = rivalKey
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (rivalKey.exists()) {
+                signingConfigs.getByName("rival")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }
