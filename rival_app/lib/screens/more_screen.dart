@@ -235,6 +235,8 @@ class MoreScreen extends StatelessWidget {
                   ),
                   subtitle: 'حساب لكل طبيب، يشوف بيه حالاته بس',
                 ),
+              SectionHeader('المظهر'),
+              const _AppearanceCard(),
               SectionHeader('التصاميم'),
               _Tile(
                 Icons.filter_frames_outlined,
@@ -325,6 +327,70 @@ class MoreScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// تلقائي (حسب الجهاز) / فاتح / ليلي، ويتبدل بنعومة.
+class _AppearanceCard extends StatelessWidget {
+  const _AppearanceCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    const modes = [
+      ('auto', 'تلقائي', Icons.brightness_auto_outlined),
+      ('light', 'فاتح', Icons.light_mode_outlined),
+      ('dark', 'ليلي', Icons.dark_mode_outlined),
+    ];
+    return ValueListenableBuilder<String>(
+      valueListenable: Store.instance.look,
+      builder: (context, look, _) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          children: [
+            for (final (key, label, icon) in modes) ...[
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => Store.instance.setAppearance(key),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOutCubic,
+                    height: 74,
+                    decoration: BoxDecoration(
+                      color: look == key ? null : b.bg,
+                      gradient: look == key ? b.pressed : null,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: look == key ? const [] : b.raised(0.55),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          icon,
+                          color: look == key ? b.primaryDeep : b.muted,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: look == key
+                                ? FontWeight.w800
+                                : FontWeight.w500,
+                            color: look == key ? b.primaryDeep : b.text,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              if (key != 'dark') const SizedBox(width: 12),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

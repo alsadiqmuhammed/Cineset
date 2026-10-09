@@ -242,6 +242,9 @@ class Patient {
   final int created;
   Gender? gender;
   int? birthYear;
+
+  /// تاريخ الميلاد الكامل (منتصف الليل بالتوقيت المحلي) إذا انعرف، لتذكير عيد الميلاد.
+  int? birthDate;
   String notes;
 
   /// الطبيب اللي سجّل المراجع (حتى يشوفه بحسابه قبل ما تنفتحله حالة).
@@ -255,12 +258,53 @@ class Patient {
     required this.created,
     this.gender,
     this.birthYear,
+    this.birthDate,
     this.notes = '',
     this.createdBy,
     List<CaseRecord>? cases,
   }) : cases = cases ?? [];
 
-  int? get age => birthYear == null ? null : DateTime.now().year - birthYear!;
+  int? get age {
+    final now = DateTime.now();
+    if (birthDate != null) {
+      final d = DateTime.fromMillisecondsSinceEpoch(birthDate!);
+      var a = now.year - d.year;
+      if (now.month < d.month || (now.month == d.month && now.day < d.day)) {
+        a--;
+      }
+      return a < 0 ? 0 : a;
+    }
+    return birthYear == null ? null : now.year - birthYear!;
+  }
+
+  DateTime? get birthday => birthDate == null
+      ? null
+      : DateTime.fromMillisecondsSinceEpoch(birthDate!);
+
+  /// كم يوم باقي لعيد الميلاد الجاي (٠ = اليوم). ٢٩ شباط يصير ٢٨ بالسنين العادية.
+  int? daysToBirthday([DateTime? now]) {
+    final d = birthday;
+    if (d == null) return null;
+    final n = now ?? DateTime.now();
+    final today = DateTime(n.year, n.month, n.day);
+    DateTime on(int y) {
+      final last = DateTime(y, d.month + 1, 0).day;
+      return DateTime(y, d.month, d.day > last ? last : d.day);
+    }
+
+    var next = on(today.year);
+    if (next.isBefore(today)) next = on(today.year + 1);
+    return (next.difference(today).inHours + 12) ~/ 24;
+  }
+
+  /// العمر اللي راح يكمله بعيد ميلاده الجاي.
+  int? get turning {
+    final d = birthday;
+    final left = daysToBirthday();
+    if (d == null || left == null) return null;
+    final n = DateTime.now().add(Duration(days: left));
+    return n.year - d.year;
+  }
 
   /// بيانات المراجع من نسخة ثانية (بدون الحالات).
   void assign(Patient o) {
@@ -268,6 +312,7 @@ class Patient {
     phone = o.phone;
     gender = o.gender;
     birthYear = o.birthYear;
+    birthDate = o.birthDate;
     notes = o.notes;
     createdBy = o.createdBy;
   }
@@ -279,6 +324,7 @@ class Patient {
     'created': created,
     if (gender != null) 'gender': gender!.name,
     if (birthYear != null) 'birthYear': birthYear,
+    if (birthDate != null) 'birthDate': birthDate,
     'notes': notes,
     if (createdBy != null) 'createdBy': createdBy,
     'cases': [for (final c in cases) c.toJson()],
@@ -291,6 +337,7 @@ class Patient {
     created: j['created'] as int,
     gender: Gender.values.asNameMap()[j['gender']],
     birthYear: j['birthYear'] as int?,
+    birthDate: j['birthDate'] as int?,
     notes: (j['notes'] as String?) ?? '',
     createdBy: j['createdBy'] as String?,
     cases: [

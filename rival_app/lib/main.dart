@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'brand.dart';
 import 'cloud.dart';
 import 'lock.dart';
+import 'screens/appointments_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/more_screen.dart';
@@ -108,34 +109,55 @@ class RivalAppState extends State<RivalApp> {
   Widget build(BuildContext context) {
     final s = _section;
     final brand = s == null ? dental : Brand.of(s);
+    return ValueListenableBuilder<String>(
+      valueListenable: Store.instance.look,
+      builder: (context, look, _) => _app(brand, look),
+    );
+  }
+
+  Widget _app(Brand brand, String look) {
+    final s = _section;
+    final mode = switch (look) {
+      'light' => ThemeMode.light,
+      'dark' => ThemeMode.dark,
+      _ => ThemeMode.system,
+    };
     return MaterialApp(
       title: 'ريڤال',
       debugShowCheckedModeBanner: false,
       theme: brand.theme(),
+      darkTheme: brand.night.theme(),
+      themeMode: mode,
+      themeAnimationDuration: const Duration(milliseconds: 450),
+      themeAnimationCurve: Curves.easeOutCubic,
       locale: const Locale('ar'),
       supportedLocales: const [Locale('ar')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
-      home: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle.dark.copyWith(
-          statusBarColor: Colors.transparent,
+      home: Builder(
+        builder: (context) => AnnotatedRegion<SystemUiOverlayStyle>(
+          value:
+              (context.brand.isDark
+                      ? SystemUiOverlayStyle.light
+                      : SystemUiOverlayStyle.dark)
+                  .copyWith(statusBarColor: Colors.transparent),
+          child: _needsLogin
+              ? LoginScreen(
+                  onDone: () {
+                    _account = Store.instance.account;
+                    setState(() {});
+                    WidgetsBinding.instance.addPostFrameCallback(
+                      (_) => _autoOpen(),
+                    );
+                  },
+                )
+              : s == null
+              ? SectionPicker(
+                  onChosen: choose,
+                  busy: _opening,
+                  allowed: allowedSections,
+                )
+              : HomeShell(key: ValueKey(s)),
         ),
-        child: _needsLogin
-            ? LoginScreen(
-                onDone: () {
-                  _account = Store.instance.account;
-                  setState(() {});
-                  WidgetsBinding.instance.addPostFrameCallback(
-                    (_) => _autoOpen(),
-                  );
-                },
-              )
-            : s == null
-            ? SectionPicker(
-                onChosen: choose,
-                busy: _opening,
-                allowed: allowedSections,
-              )
-            : HomeShell(key: ValueKey(s)),
       ),
       builder: (context, child) => LockGate(child: child!),
     );
@@ -162,36 +184,120 @@ class HomeShellState extends State<HomeShell> {
         children: [
           DashboardScreen(onGo: go),
           const PatientsScreen(),
+          const AppointmentsScreen(),
           const ReportsScreen(),
           const MoreScreen(),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tab,
-        onDestinationSelected: go,
-        destinations: [
-          const NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home_rounded),
-            label: 'الرئيسية',
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.people_outline),
-            selectedIcon: const Icon(Icons.people),
-            label: b.patients,
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.insights_outlined),
-            selectedIcon: Icon(Icons.insights),
-            label: 'التقارير',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.grid_view_outlined),
-            selectedIcon: Icon(Icons.grid_view_rounded),
-            label: 'المزيد',
-          ),
+      bottomNavigationBar: _NeuNavBar(
+        index: _tab,
+        onTap: go,
+        items: [
+          (Icons.home_outlined, Icons.home_rounded, 'الرئيسية'),
+          (Icons.people_outline, Icons.people_rounded, b.patients),
+          (Icons.event_note_outlined, Icons.event_note_rounded, 'المواعيد'),
+          (Icons.insights_outlined, Icons.insights_rounded, 'التقارير'),
+          (Icons.grid_view_outlined, Icons.grid_view_rounded, 'المزيد'),
         ],
       ),
+    );
+  }
+}
+
+/// شريط سفلي عائم بارز، والتبويب المختار غاطس لجوه بنعومة.
+class _NeuNavBar extends StatelessWidget {
+  final int index;
+  final ValueChanged<int> onTap;
+  final List<(IconData, IconData, String)> items;
+  const _NeuNavBar({
+    required this.index,
+    required this.onTap,
+    required this.items,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    return ColoredBox(
+      color: b.bg,
+      child: SafeArea(
+        top: false,
+        child: Container(
+          height: 70,
+          margin: const EdgeInsets.fromLTRB(14, 4, 14, 12),
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            color: b.bg,
+            borderRadius: BorderRadius.circular(26),
+            boxShadow: b.raised(0.85),
+          ),
+          child: Row(
+            children: [
+              for (var i = 0; i < items.length; i++)
+                Expanded(
+                  child: Semantics(
+                    selected: i == index,
+                    button: true,
+                    label: items[i].$3,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => onTap(i),
+                      child: _NavItem(
+                        on: i == index,
+                        icon: i == index ? items[i].$2 : items[i].$1,
+                        label: items[i].$3,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  final bool on;
+  final IconData icon;
+  final String label;
+  const _NavItem({required this.on, required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+          width: on ? 50 : 40,
+          height: 34,
+          decoration: BoxDecoration(
+            gradient: on ? b.pressed : null,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: AnimatedScale(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutBack,
+            scale: on ? 1.08 : 1,
+            child: Icon(icon, size: 22, color: on ? b.primaryDeep : b.muted),
+          ),
+        ),
+        const SizedBox(height: 3),
+        AnimatedDefaultTextStyle(
+          duration: const Duration(milliseconds: 250),
+          style: TextStyle(
+            fontFamily: kFontUi,
+            fontSize: 10.5,
+            fontWeight: on ? FontWeight.w800 : FontWeight.w500,
+            color: on ? b.primaryDeep : b.muted,
+          ),
+          child: Text(label, maxLines: 1, overflow: TextOverflow.fade),
+        ),
+      ],
     );
   }
 }

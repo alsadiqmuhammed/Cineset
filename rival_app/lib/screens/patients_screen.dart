@@ -32,6 +32,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
       r.phone,
       gender: r.gender,
       birthYear: r.birthYear,
+      birthDate: r.birthDate,
     );
     if (!mounted) return;
     Navigator.push(
@@ -214,7 +215,14 @@ class PatientInput {
   final String name, phone;
   final Gender? gender;
   final int? birthYear;
-  const PatientInput(this.name, this.phone, this.gender, this.birthYear);
+  final int? birthDate;
+  const PatientInput(
+    this.name,
+    this.phone,
+    this.gender,
+    this.birthYear, [
+    this.birthDate,
+  ]);
 }
 
 Future<PatientInput?> showPatientDialog(
@@ -242,6 +250,30 @@ class _PatientSheetState extends State<_PatientSheet> {
     text: widget.existing?.age?.toString() ?? '',
   );
   late Gender? _gender = widget.existing?.gender;
+  late DateTime? _birth = widget.existing?.birthday;
+
+  Future<void> _pickBirth() async {
+    final now = DateTime.now();
+    final age = int.tryParse(latinDigits(_age.text.trim()));
+    final d = await showDatePicker(
+      context: context,
+      initialDate:
+          _birth ?? DateTime(now.year - (age ?? 25), now.month, now.day),
+      firstDate: DateTime(now.year - 110),
+      lastDate: now,
+      initialEntryMode: DatePickerEntryMode.calendarOnly,
+      helpText: 'تاريخ الميلاد',
+    );
+    if (d == null) return;
+    setState(() {
+      _birth = DateTime(d.year, d.month, d.day);
+      var a = now.year - d.year;
+      if (now.month < d.month || (now.month == d.month && now.day < d.day)) {
+        a--;
+      }
+      _age.text = '$a';
+    });
+  }
 
   @override
   void dispose() {
@@ -254,14 +286,15 @@ class _PatientSheetState extends State<_PatientSheet> {
   void _submit() {
     final name = _name.text.trim();
     if (name.isEmpty) return;
-    final age = int.tryParse(_age.text.trim());
+    final age = int.tryParse(latinDigits(_age.text.trim()));
     Navigator.pop(
       context,
       PatientInput(
         name,
         _phone.text.trim(),
         _gender,
-        age == null ? null : DateTime.now().year - age,
+        _birth?.year ?? (age == null ? null : DateTime.now().year - age),
+        _birth?.millisecondsSinceEpoch,
       ),
     );
   }
@@ -310,10 +343,37 @@ class _PatientSheetState extends State<_PatientSheet> {
                   child: TextField(
                     controller: _age,
                     keyboardType: TextInputType.number,
+                    onChanged: (_) {
+                      if (_birth != null) setState(() => _birth = null);
+                    },
                     decoration: const InputDecoration(labelText: 'العمر'),
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+            InkWell(
+              onTap: _pickBirth,
+              borderRadius: BorderRadius.circular(16),
+              child: InputDecorator(
+                decoration: InputDecoration(
+                  labelText: 'تاريخ الميلاد (لتهنئة عيد الميلاد)',
+                  prefixIcon: Icon(Icons.cake_outlined, color: b.primary),
+                  suffixIcon: _birth == null
+                      ? null
+                      : IconButton(
+                          tooltip: 'مسح',
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: () => setState(() => _birth = null),
+                        ),
+                ),
+                child: Text(
+                  _birth == null
+                      ? 'اختياري'
+                      : arDate(_birth!.millisecondsSinceEpoch),
+                  style: TextStyle(color: _birth == null ? b.muted : b.text),
+                ),
+              ),
             ),
             if (!b.feminine) ...[
               const SizedBox(height: 12),

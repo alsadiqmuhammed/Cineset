@@ -19,29 +19,34 @@ class SectionPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final b = context.brand;
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F1EC),
+      backgroundColor: b.bg,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
           children: [
-            const Text(
+            Text(
               'أهلاً بيك',
-              style: TextStyle(color: Color(0xFF6B5F57), fontSize: 15),
+              style: TextStyle(
+                color: b.muted,
+                fontSize: 17,
+                fontFamily: kFontAccent,
+              ),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'اختار القسم',
               style: TextStyle(
                 fontSize: 30,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF231F20),
+                color: b.text,
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'كل قسم إله أرشيفه وأطباؤه وهويته. تگدر تبدّل بعدين من "المزيد".',
-              style: TextStyle(color: Color(0xFF6B5F57), height: 1.6),
+              style: TextStyle(color: b.muted, height: 1.6),
             ),
             const SizedBox(height: 26),
             if (allowed.contains(Section.dental))
@@ -91,13 +96,14 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = light ? brand.text : Colors.white;
+    final page = context.brand;
+    final fg = light ? page.text : Colors.white;
     return Container(
       decoration: BoxDecoration(
-        color: light ? Colors.white : null,
+        color: light ? page.bg : null,
         gradient: light ? null : brand.heroGradient,
         borderRadius: BorderRadius.circular(28),
-        boxShadow: brand.shadow,
+        boxShadow: page.raised(0.9),
       ),
       clipBehavior: Clip.antiAlias,
       child: Material(
@@ -110,7 +116,10 @@ class _SectionCard extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(22, 26, 22, 22),
               child: Column(
                 children: [
-                  Image.asset(logo, height: 120),
+                  Image.asset(
+                    light && page.isDark ? brand.logoReversed : logo,
+                    height: 120,
+                  ),
                   const SizedBox(height: 18),
                   Row(
                     children: [

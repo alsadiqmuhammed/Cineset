@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../brand.dart';
 import '../cloud.dart';
 import '../store.dart';
 
@@ -63,19 +64,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const ink = Color(0xFF231F20), soft = Color(0xFF6B5F57);
+    final b = context.brand;
+    final ink = b.text, soft = b.muted;
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F1EC),
-      appBar: widget.fromSettings
-          ? AppBar(backgroundColor: const Color(0xFFF4F1EC))
-          : null,
+      backgroundColor: b.bg,
+      appBar: widget.fromSettings ? AppBar(backgroundColor: b.bg) : null,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(24, 36, 24, 24),
           children: [
             Center(child: Image.asset('assets/brand/symbol.png', height: 84)),
             const SizedBox(height: 22),
-            const Text(
+            Text(
               'حساب العيادة',
               textAlign: TextAlign.center,
               style: TextStyle(
@@ -85,7 +85,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'ادخل حتى تشتغل كل أجهزة العيادة على نفس الأرشيف. التعديلات تتزامن لحالها، وتنحفظ حتى بدون إنترنت.',
               textAlign: TextAlign.center,
               style: TextStyle(color: soft, height: 1.6),
@@ -122,7 +122,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFDECEA),
+                  color: const Color(0xFFB3261E).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
@@ -135,7 +135,7 @@ class _LoginScreenState extends State<LoginScreen> {
             FilledButton(
               onPressed: _busy ? null : _signIn,
               style: FilledButton.styleFrom(
-                backgroundColor: ink,
+                backgroundColor: b.isDark ? b.primary : ink,
                 minimumSize: const Size.fromHeight(52),
               ),
               child: _busy
@@ -153,14 +153,14 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 8),
               TextButton(
                 onPressed: _busy ? null : _skip,
-                child: const Text(
+                child: Text(
                   'استخدم بدون حساب (بيانات هذا الجهاز بس)',
                   style: TextStyle(color: soft),
                 ),
               ),
             ],
             const SizedBox(height: 18),
-            const Text(
+            Text(
               'الحسابات يضيفها مسؤول العيادة. إذا ما عندك حساب، اطلبه منه.',
               textAlign: TextAlign.center,
               style: TextStyle(color: soft, fontSize: 12),

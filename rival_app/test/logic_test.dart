@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rival_clinic/brand.dart';
 import 'package:rival_clinic/models.dart';
 import 'package:rival_clinic/render.dart';
+import 'package:rival_clinic/screens/appointments_screen.dart';
 import 'package:rival_clinic/screens/patient_screen.dart';
 import 'package:rival_clinic/stats.dart';
 import 'package:rival_clinic/store.dart';
@@ -337,5 +338,46 @@ void main() {
     expect(searchKey('إسراء'), searchKey('اسراء'));
     expect(searchKey('فاطمة'), searchKey('فاطمه'));
     expect(searchKey('٠٧٧٠ ١٢٣'), '0770123');
+  });
+
+  group('birthdays and appointments', () {
+    Patient born(DateTime d) => Patient(
+      id: 'p',
+      name: 'زينب علي',
+      phone: '',
+      created: 0,
+      birthDate: d.millisecondsSinceEpoch,
+    );
+
+    test('days to the next birthday, age and leap day', () {
+      final now = DateTime(2026, 10, 9, 15);
+      expect(born(DateTime(1990, 10, 9)).daysToBirthday(now), 0);
+      expect(born(DateTime(1990, 10, 12)).daysToBirthday(now), 3);
+      expect(born(DateTime(1990, 10, 8)).daysToBirthday(now), 364);
+      expect(born(DateTime(2000, 2, 29)).daysToBirthday(DateTime(2027, 2, 28)), 0);
+      final p = born(DateTime(1990, 12, 31));
+      expect(p.age, DateTime.now().year - 1991 + (DateTime.now().month == 12 && DateTime.now().day == 31 ? 1 : 0));
+      final restored = Patient.fromJson(p.toJson());
+      expect(restored.birthDate, p.birthDate);
+    });
+
+    test('close appointments for the same doctor are flagged', () {
+      final p = Patient(id: 'p', name: 'x', phone: '', created: 0);
+      CaseRecord at(String id, DateTime t, String doc) => CaseRecord(
+        id: id,
+        title: 't',
+        created: 0,
+        doctorId: doc,
+        nextVisit: t.millisecondsSinceEpoch,
+      );
+      final list = [
+        (p, at('a', DateTime(2026, 1, 1, 17, 0), 'd1')),
+        (p, at('b', DateTime(2026, 1, 1, 17, 20), 'd1')),
+        (p, at('c', DateTime(2026, 1, 1, 17, 10), 'd2')),
+        (p, at('d', DateTime(2026, 1, 1, 19, 0), 'd1')),
+        (p, at('e', DateTime(2026, 1, 1), 'd1')),
+      ];
+      expect(appointmentConflicts(list), {'a', 'b'});
+    });
   });
 }

@@ -63,6 +63,10 @@ class Store extends ChangeNotifier {
   /// اختار يشتغل بدون حساب (بيانات الجهاز بس).
   bool cloudSkipped = false;
 
+  /// المظهر: auto (حسب التلفون)، light، dark. التطبيق يسمع [look] حتى يتبدل فوراً.
+  String appearance = 'auto';
+  final look = ValueNotifier<String>('auto');
+
   /// الحساب المسجل (null = بيانات الجهاز بدون حساب).
   String? account;
 
@@ -92,15 +96,28 @@ class Store extends ChangeNotifier {
       final s = jsonDecode(await _settingsFile.readAsString()) as Map;
       lockEnabled = s['lock'] == true;
       cloudSkipped = s['cloudSkipped'] == true;
+      appearance = (s['appearance'] as String?) ?? 'auto';
+      look.value = appearance;
     }
   }
 
   Future<void> _saveSettings() => _settingsFile.writeAsString(
-    jsonEncode({'lock': lockEnabled, 'cloudSkipped': cloudSkipped}),
+    jsonEncode({
+      'lock': lockEnabled,
+      'cloudSkipped': cloudSkipped,
+      'appearance': appearance,
+    }),
   );
 
   Future<void> setLock(bool v) async {
     lockEnabled = v;
+    await _saveSettings();
+    notifyListeners();
+  }
+
+  Future<void> setAppearance(String v) async {
+    appearance = v;
+    look.value = v;
     await _saveSettings();
     notifyListeners();
   }
@@ -309,6 +326,7 @@ class Store extends ChangeNotifier {
     String phone, {
     Gender? gender,
     int? birthYear,
+    int? birthDate,
   }) async {
     final p = Patient(
       id: newId(),
@@ -317,6 +335,7 @@ class Store extends ChangeNotifier {
       created: DateTime.now().millisecondsSinceEpoch,
       gender: gender ?? (section == Section.beauty ? Gender.female : null),
       birthYear: birthYear,
+      birthDate: birthDate,
       createdBy: myDoctorId,
     );
     patients.insert(0, p);

@@ -711,14 +711,9 @@ class FaceMapPainter extends CustomPainter {
     // الوجه.
     final face = Path()..moveTo(p(0.5, 0.17).dx, p(0.5, 0.17).dy);
     cubic(face, [0.67, 0.17, 0.79, 0.28, 0.795, 0.46]);
-    cubic(face, [0.8, 0.66, 0.7, 0.84, 0.57, 0.935]);
-    face.quadraticBezierTo(
-      p(0.5, 0.98).dx,
-      p(0.5, 0.98).dy,
-      p(0.43, 0.935).dx,
-      p(0.43, 0.935).dy,
-    );
-    cubic(face, [0.3, 0.84, 0.2, 0.66, 0.205, 0.46]);
+    cubic(face, [0.8, 0.68, 0.73, 0.85, 0.585, 0.935]);
+    cubic(face, [0.54, 0.965, 0.46, 0.965, 0.415, 0.935]);
+    cubic(face, [0.27, 0.85, 0.2, 0.68, 0.205, 0.46]);
     cubic(face, [0.21, 0.28, 0.33, 0.17, 0.5, 0.17]);
     face.close();
     canvas.drawPath(
@@ -735,6 +730,32 @@ class FaceMapPainter extends CustomPainter {
     cubic(fringe, [0.27, 0.2, 0.42, 0.15, 0.56, 0.18]);
     cubic(fringe, [0.68, 0.2, 0.76, 0.27, 0.775, 0.37]);
     canvas.drawPath(fringe, thin..color = brand.accent.withValues(alpha: 0.75));
+    // غرّة جانبية ناعمة على يسار الجبين (ما تغطي منطقة الجبهة).
+    final bangs = Path()..moveTo(p(0.215, 0.42).dx, p(0.215, 0.42).dy);
+    cubic(bangs, [0.2, 0.26, 0.33, 0.16, 0.5, 0.165]);
+    cubic(bangs, [0.4, 0.19, 0.3, 0.25, 0.265, 0.33]);
+    cubic(bangs, [0.25, 0.37, 0.235, 0.4, 0.215, 0.42]);
+    bangs.close();
+    canvas.drawPath(
+      bangs,
+      Paint()
+        ..shader = ui.Gradient.linear(p(0.5, 0.16), p(0.22, 0.42), [
+          brand.accent.withValues(alpha: 0.75),
+          brand.accent.withValues(alpha: 0.45),
+        ]),
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(p(0.44, 0.175).dx, p(0.44, 0.175).dy)
+        ..quadraticBezierTo(
+          p(0.3, 0.22).dx,
+          p(0.3, 0.22).dy,
+          p(0.245, 0.35).dx,
+          p(0.245, 0.35).dy,
+        ),
+      thin..color = Colors.white.withValues(alpha: 0.55),
+    );
+    _flower(canvas, p(0.74, 0.2), w * 0.04);
     thin.color = ink;
 
     // حمرة الخدود مع خطوط صغيرة لطيفة.
@@ -744,7 +765,7 @@ class FaceMapPainter extends CustomPainter {
         w * 0.075,
         Paint()
           ..shader = ui.Gradient.radial(p(x, 0.62), w * 0.075, [
-            _lipBottom.withValues(alpha: 0.28),
+            _lipBottom.withValues(alpha: 0.4),
             _lipBottom.withValues(alpha: 0),
           ]),
       );
@@ -803,14 +824,23 @@ class FaceMapPainter extends CustomPainter {
       canvas.clipPath(eye);
       canvas.drawCircle(
         p(cx, 0.468),
-        w * 0.02,
-        Paint()..color = brand.highlight.withValues(alpha: 0.75),
+        w * 0.024,
+        Paint()
+          ..shader = ui.Gradient.radial(p(cx, 0.472), w * 0.024, [
+            brand.highlight.withValues(alpha: 0.6),
+            brand.highlight,
+          ]),
       );
-      canvas.drawCircle(p(cx, 0.468), w * 0.009, Paint()..color = brand.dark);
+      canvas.drawCircle(p(cx, 0.468), w * 0.011, Paint()..color = brand.dark);
       canvas.drawCircle(
-        p(cx + 0.007, 0.462),
-        w * 0.004,
+        p(cx + 0.008, 0.461),
+        w * 0.0055,
         Paint()..color = Colors.white,
+      );
+      canvas.drawCircle(
+        p(cx - 0.007, 0.476),
+        w * 0.0028,
+        Paint()..color = Colors.white.withValues(alpha: 0.85),
       );
       canvas.restore();
       canvas.drawPath(eye, thin);
@@ -930,6 +960,33 @@ class FaceMapPainter extends CustomPainter {
       w * 0.006,
       Paint()..color = Colors.white.withValues(alpha: 0.6),
     );
+    // زوايا ابتسامة خفيفة.
+    for (final sgn in [-1.0, 1.0]) {
+      canvas.drawPath(
+        Path()
+          ..moveTo(p(0.5 + sgn * 0.072, 0.722).dx, p(0, 0.722).dy)
+          ..quadraticBezierTo(
+            p(0.5 + sgn * 0.085, 0.72).dx,
+            p(0, 0.72).dy,
+            p(0.5 + sgn * 0.088, 0.708).dx,
+            p(0, 0.708).dy,
+          ),
+        thin..color = _lipBottom.withValues(alpha: 0.7),
+      );
+    }
+    // قلادة ناعمة بقلب صغير.
+    canvas.drawPath(
+      Path()
+        ..moveTo(p(0.4, 1.075).dx, p(0, 1.075).dy)
+        ..quadraticBezierTo(
+          p(0.5, 1.15).dx,
+          p(0, 1.15).dy,
+          p(0.6, 1.075).dx,
+          p(0, 1.075).dy,
+        ),
+      thin..color = brand.accent,
+    );
+    _heart(canvas, p(0.5, 1.122), w * 0.014, brand.accent);
     thin.color = ink;
 
     // المناطق: نقاط ناعمة، وقلب متوهج لما تتأشر.
@@ -1045,6 +1102,29 @@ class FaceMapPainter extends CustomPainter {
           ..color = stroke,
       );
     }
+  }
+
+  /// وردة صغيرة بالشعر: خمس بتلات بلون القسم ووسط شامبين.
+  void _flower(Canvas canvas, Offset c, double r) {
+    for (var i = 0; i < 5; i++) {
+      final a = -math.pi / 2 + i * 2 * math.pi / 5;
+      final pc = c + Offset(math.cos(a), math.sin(a)) * r * 0.55;
+      canvas.drawCircle(
+        pc,
+        r * 0.48,
+        Paint()
+          ..shader = ui.Gradient.radial(pc, r * 0.48, [
+            Color.lerp(brand.highlight, Colors.white, 0.45)!,
+            brand.highlight,
+          ]),
+      );
+    }
+    canvas.drawCircle(c, r * 0.32, Paint()..color = brand.accent);
+    canvas.drawCircle(
+      c + Offset(-r * 0.1, -r * 0.1),
+      r * 0.1,
+      Paint()..color = Colors.white.withValues(alpha: 0.8),
+    );
   }
 
   void _star(Canvas canvas, Offset c, double r, Color color) {

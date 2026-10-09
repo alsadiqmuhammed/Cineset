@@ -35,6 +35,15 @@ String reminderText(Brand b, Patient p, CaseRecord c) {
       'إذا تحتاج تأجيل الموعد راسلنا هنا. ننتظرك 🤍';
 }
 
+/// تهنئة عيد الميلاد جاهزة للواتساب.
+String birthdayText(Brand b, Patient p) {
+  final first = p.name.split(' ').first;
+  final she = p.gender == Gender.female || b.feminine;
+  return 'عيد ميلاد سعيد $first 🎂✨\n'
+      'كل عام و${she ? 'انتِ' : 'انت'} بألف خير، ${she ? 'ابتسامتج' : 'ابتسامتك'} تنوّر أيامنا.\n'
+      'مع كل الحب من ${b.name} 🤍';
+}
+
 Future<void> callPhone(String phone) => launchUrl(
   Uri.parse('tel:${latinDigits(phone).replaceAll(RegExp(r'[^0-9+]'), '')}'),
 );
@@ -78,7 +87,8 @@ class PatientScreen extends StatelessWidget {
           ..name = r.name
           ..phone = r.phone
           ..gender = r.gender ?? patient.gender
-          ..birthYear = r.birthYear;
+          ..birthYear = r.birthYear
+          ..birthDate = r.birthDate;
         await Store.instance.save();
       case 'report':
         await shareReport(context, () => patientReport(b, patient));

@@ -41,13 +41,15 @@ Future<bool> confirm(
   return ok == true;
 }
 
-/// كرت أبيض بظل دافي بثلاث طبقات ولمعة رفيعة فوق.
-class BrandCard extends StatelessWidget {
+/// بطاقة بارزة بنفس لون الخلفية (Soft UI): ظل غامق تحت ولمعة فوق،
+/// وتنضغط لجوه بنعومة وقت اللمس.
+class BrandCard extends StatefulWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
   final VoidCallback? onTap;
   final Color? color;
   final Color? topLine;
+  final double radius;
   const BrandCard({
     super.key,
     required this.child,
@@ -55,31 +57,210 @@ class BrandCard extends StatelessWidget {
     this.onTap,
     this.color,
     this.topLine,
+    this.radius = 22,
+  });
+
+  @override
+  State<BrandCard> createState() => _BrandCardState();
+}
+
+class _BrandCardState extends State<BrandCard> {
+  bool _down = false;
+
+  void _set(bool v) {
+    if (widget.onTap == null || _down == v) return;
+    setState(() => _down = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    final r = BorderRadius.circular(widget.radius);
+    return AnimatedScale(
+      scale: _down ? 0.985 : 1,
+      duration: const Duration(milliseconds: 140),
+      curve: Curves.easeOut,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        decoration: BoxDecoration(
+          color: widget.color ?? b.card,
+          borderRadius: r,
+          boxShadow: _down ? b.raised(0.25) : b.shadow,
+          border: widget.topLine == null
+              ? null
+              : Border(top: BorderSide(color: widget.topLine!, width: 3)),
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          borderRadius: r,
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: widget.onTap,
+            onHighlightChanged: _set,
+            splashColor: b.primary.withValues(alpha: 0.06),
+            highlightColor: Colors.transparent,
+            child: Padding(padding: widget.padding, child: widget.child),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// زر بارز (أيقونة وكلمة) ينضغط لجوه. للأزرار السريعة بالرئيسية.
+class NeuButton extends StatefulWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool accent;
+  const NeuButton({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.accent = false,
+  });
+
+  @override
+  State<NeuButton> createState() => _NeuButtonState();
+}
+
+class _NeuButtonState extends State<NeuButton> {
+  bool _down = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    final r = BorderRadius.circular(22);
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _down = true),
+      onTapCancel: () => setState(() => _down = false),
+      onTapUp: (_) => setState(() => _down = false),
+      onTap: widget.onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+        decoration: BoxDecoration(
+          borderRadius: r,
+          color: _down ? null : b.bg,
+          gradient: _down ? b.pressed : null,
+          boxShadow: _down ? const [] : b.raised(0.7),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: widget.accent
+                    ? LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [b.primary, b.day.primaryDeep],
+                      )
+                    : null,
+                color: widget.accent ? null : b.primary.withValues(alpha: 0.1),
+              ),
+              child: Icon(
+                widget.icon,
+                size: 21,
+                color: widget.accent ? Colors.white : b.primary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              widget.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: b.text,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// حلقة تقدّم تتعبى بنعومة وقت تظهر.
+class AnimatedRing extends StatelessWidget {
+  final double value;
+  final double size, stroke;
+  final Color color;
+  final Color? color2;
+  final Widget? child;
+  const AnimatedRing({
+    super.key,
+    required this.value,
+    required this.color,
+    this.color2,
+    this.size = 120,
+    this.stroke = 10,
+    this.child,
   });
 
   @override
   Widget build(BuildContext context) {
     final b = context.brand;
     return Container(
-      decoration: BoxDecoration(
-        color: color ?? b.card,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: b.shadow,
-        border: topLine == null
-            ? null
-            : Border(top: BorderSide(color: topLine!, width: 3)),
-      ),
-      child: Material(
-        type: MaterialType.transparency,
-        borderRadius: BorderRadius.circular(20),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(padding: padding, child: child),
+      width: size,
+      height: size,
+      decoration: BoxDecoration(shape: BoxShape.circle, gradient: b.pressed),
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: value.clamp(0, 1).toDouble()),
+        duration: const Duration(milliseconds: 1100),
+        curve: Curves.easeOutCubic,
+        builder: (context, v, _) => CustomPaint(
+          painter: _RingPainter(v, color, color2 ?? color, stroke),
+          child: Center(child: child),
         ),
       ),
     );
   }
+}
+
+class _RingPainter extends CustomPainter {
+  final double v;
+  final Color a, b;
+  final double stroke;
+  const _RingPainter(this.v, this.a, this.b, this.stroke);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromCircle(
+      center: size.center(Offset.zero),
+      radius: size.shortestSide / 2 - stroke,
+    );
+    if (v <= 0) return;
+    canvas.drawArc(
+      rect,
+      -math.pi / 2,
+      2 * math.pi * v,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..strokeCap = StrokeCap.round
+        ..shader = SweepGradient(
+          startAngle: -math.pi / 2,
+          endAngle: 3 * math.pi / 2,
+          colors: [a, b],
+          transform: const GradientRotation(-math.pi / 2),
+        ).createShader(rect),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_RingPainter old) => old.v != v || old.a != a;
 }
 
 /// كرت غامق بتدرّج القسم مع حلقات ريڤال ونجوم اللمعة.
@@ -99,7 +280,7 @@ class HeroPanel extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: b.heroGradient,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: b.shadow,
+        boxShadow: b.raised(0.9),
       ),
       clipBehavior: Clip.antiAlias,
       child: CustomPaint(
@@ -516,6 +697,127 @@ void disposeLater(List<ChangeNotifier> items) =>
       }
     });
 
+/// تبويبات ناعمة: مجرى غاطس والمختار بارز ينزلق بينها.
+class NeuTabs extends StatelessWidget {
+  final List<String> labels;
+  final List<int>? badges;
+  final int index;
+  final ValueChanged<int> onChanged;
+  const NeuTabs({
+    super.key,
+    required this.labels,
+    required this.index,
+    required this.onChanged,
+    this.badges,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    final dir = Directionality.of(context);
+    return Container(
+      height: 46,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        gradient: b.pressed,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final w = box.maxWidth / labels.length;
+          final start = index * w;
+          return Stack(
+            children: [
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeOutCubic,
+                top: 0,
+                bottom: 0,
+                width: w,
+                left: dir == TextDirection.rtl ? null : start,
+                right: dir == TextDirection.rtl ? start : null,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: b.bg,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: b.raised(0.4),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  for (var i = 0; i < labels.length; i++)
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => onChanged(i),
+                        child: Center(
+                          child: AnimatedDefaultTextStyle(
+                            duration: const Duration(milliseconds: 220),
+                            style: TextStyle(
+                              fontFamily: kFontUi,
+                              fontSize: 12.5,
+                              fontWeight: i == index
+                                  ? FontWeight.w800
+                                  : FontWeight.w500,
+                              color: i == index ? b.primaryDeep : b.muted,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    labels[i],
+                                    maxLines: 1,
+                                    overflow: TextOverflow.fade,
+                                    softWrap: false,
+                                  ),
+                                ),
+                                if ((badges?[i] ?? 0) > 0) ...[
+                                  const SizedBox(width: 4),
+                                  Container(
+                                    constraints: const BoxConstraints(
+                                      minWidth: 17,
+                                    ),
+                                    height: 17,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                    ),
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: i == index
+                                          ? b.primary
+                                          : b.muted.withValues(alpha: 0.18),
+                                      borderRadius: BorderRadius.circular(9),
+                                    ),
+                                    child: Text(
+                                      ar(badges![i]),
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: i == index
+                                            ? Colors.white
+                                            : b.muted,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
 /// مكان صورة ما موجودة بعد (تنزل من جهاز ثاني) أو انحذفت.
 Widget missingPhoto(BuildContext context, Object error, StackTrace? stack) {
   final b = context.brand;
@@ -599,6 +901,66 @@ class ConnectionBadge extends StatelessWidget {
   }
 }
 
+/// مبدّل القسم بعرض الشاشة: مجرى غاطس والقسم المختار بارز بشعاره.
+class SectionTabs extends StatelessWidget {
+  const SectionTabs({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    Widget seg(Brand x, String label) {
+      final on = x.section == b.section;
+      final tone = Brand.of(x.section, dark: b.isDark);
+      return Expanded(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: on ? null : () => RivalApp.of(context).choose(x.section),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            height: 42,
+            decoration: BoxDecoration(
+              color: on ? b.bg : Colors.transparent,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: on ? b.raised(0.4) : const [],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedOpacity(
+                  duration: const Duration(milliseconds: 300),
+                  opacity: on ? 1 : 0.55,
+                  child: Image.asset(x.symbol, height: 20),
+                ),
+                const SizedBox(width: 7),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: on ? FontWeight.w800 : FontWeight.w500,
+                    color: on ? tone.primaryDeep : b.muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        gradient: b.pressed,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        children: [seg(dental, 'قسم الأسنان'), seg(beauty, 'قسم التجميل')],
+      ),
+    );
+  }
+}
+
 class _SectionToggle extends StatelessWidget {
   const _SectionToggle();
 
@@ -607,9 +969,14 @@ class _SectionToggle extends StatelessWidget {
     final b = context.brand;
     Widget seg(Brand x, String label) {
       final on = x.section == b.section;
-      return Material(
-        color: on ? x.primary : Colors.transparent,
-        borderRadius: BorderRadius.circular(30),
+      final tone = Brand.of(x.section, dark: b.isDark);
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        decoration: BoxDecoration(
+          color: on ? tone.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(30),
+          boxShadow: on ? b.raised(0.35) : const [],
+        ),
         child: InkWell(
           borderRadius: BorderRadius.circular(30),
           onTap: on ? null : () => RivalApp.of(context).choose(x.section),
@@ -640,11 +1007,10 @@ class _SectionToggle extends StatelessWidget {
     }
 
     return Container(
-      padding: const EdgeInsets.all(3),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: b.card,
+        gradient: b.pressed,
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: b.line),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

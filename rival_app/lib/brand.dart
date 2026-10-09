@@ -24,6 +24,9 @@ class Brand extends ThemeExtension<Brand> {
   final String patient, patients, newPatient;
   final bool feminine;
 
+  /// الوضع الليلي: نفس الهوية بخلفية داكنة.
+  final bool isDark;
+
   const Brand({
     required this.section,
     required this.name,
@@ -50,9 +53,58 @@ class Brand extends ThemeExtension<Brand> {
     required this.patients,
     required this.newPatient,
     required this.feminine,
+    this.isDark = false,
   });
 
-  static Brand of(Section s) => s == Section.dental ? dental : beauty;
+  static Brand of(Section s, {bool dark = false}) => s == Section.dental
+      ? (dark ? dentalDark : dental)
+      : (dark ? beautyDark : beauty);
+
+  /// النسخة الليلية من نفس الهوية.
+  Brand get night => Brand.of(section, dark: true);
+
+  /// النسخة الفاتحة (للتصدير والتقارير: دايماً بألوان الهوية الأصلية).
+  Brand get day => Brand.of(section);
+
+  // ---------- النعومة البارزة (Soft UI) ----------
+
+  /// لون الظل الغامق والفاتح: مشتقين من خلفية القسم حتى يبين البروز طبيعي.
+  Color get shadeDark => isDark
+      ? const Color(0xFF000000).withValues(alpha: 0.55)
+      : (section == Section.dental
+            ? const Color(0xFF8C7D69).withValues(alpha: 0.32)
+            : const Color(0xFF8C645F).withValues(alpha: 0.30));
+  Color get shadeLight => isDark
+      ? const Color(0xFFFFFFFF).withValues(alpha: 0.045)
+      : const Color(0xFFFFFFFF).withValues(alpha: 0.95);
+
+  /// بارز: ظل غامق تحت ولمعة فوق.
+  List<BoxShadow> raised([double depth = 1]) => [
+    BoxShadow(
+      color: shadeDark,
+      blurRadius: 18 * depth,
+      offset: Offset(7 * depth, 7 * depth),
+    ),
+    BoxShadow(
+      color: shadeLight,
+      blurRadius: 18 * depth,
+      offset: Offset(-7 * depth, -7 * depth),
+    ),
+  ];
+
+  /// محفور (مضغوط لجوه): تدرّج من الظل للمعة.
+  Gradient get pressed => LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color.alphaBlend(shadeDark.withValues(alpha: isDark ? 0.5 : 0.16), bg),
+      Color.alphaBlend(shadeLight.withValues(alpha: isDark ? 0.06 : 0.6), bg),
+    ],
+  );
+
+  /// لون حقول الإدخال (محفورة شوية).
+  Color get well =>
+      Color.alphaBlend(shadeDark.withValues(alpha: isDark ? 0.35 : 0.10), bg);
 
   /// الأزرار والتحية تتبدل حسب القسم (بيوتي بصيغة المؤنث).
   String f(String masc, String fem) => feminine ? fem : masc;
@@ -61,7 +113,7 @@ class Brand extends ThemeExtension<Brand> {
     final scheme =
         ColorScheme.fromSeed(
           seedColor: primary,
-          brightness: Brightness.light,
+          brightness: isDark ? Brightness.dark : Brightness.light,
         ).copyWith(
           primary: primary,
           onPrimary: Colors.white,
@@ -78,7 +130,13 @@ class Brand extends ThemeExtension<Brand> {
         );
     return ThemeData(
       useMaterial3: true,
+      brightness: isDark ? Brightness.dark : Brightness.light,
       fontFamily: kFontUi,
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
+        },
+      ),
       colorScheme: scheme,
       scaffoldBackgroundColor: bg,
       extensions: [this],
@@ -102,16 +160,16 @@ class Brand extends ThemeExtension<Brand> {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: card,
+        fillColor: well,
         labelStyle: TextStyle(color: muted),
         hintStyle: TextStyle(color: muted),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: line),
+          borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: line),
+          borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
@@ -142,9 +200,11 @@ class Brand extends ThemeExtension<Brand> {
         ),
       ),
       chipTheme: ChipThemeData(
-        backgroundColor: card,
-        selectedColor: primary.withValues(alpha: 0.14),
-        side: BorderSide(color: line),
+        backgroundColor: bg,
+        selectedColor: primary.withValues(alpha: isDark ? 0.3 : 0.14),
+        side: BorderSide(
+          color: isDark ? line : shadeDark.withValues(alpha: 0.18),
+        ),
         labelStyle: TextStyle(fontFamily: kFontUi, color: text),
         shape: const StadiumBorder(),
       ),
@@ -184,7 +244,7 @@ class Brand extends ThemeExtension<Brand> {
       dividerTheme: DividerThemeData(color: line, space: 1),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: dark,
+        backgroundColor: isDark ? const Color(0xFF3A3432) : dark,
         contentTextStyle: const TextStyle(fontFamily: kFontUi),
       ),
       dialogTheme: DialogThemeData(
@@ -198,24 +258,8 @@ class Brand extends ThemeExtension<Brand> {
     );
   }
 
-  /// ظل دافي بثلاث طبقات (ملامس، متوسط، ناعم بعيد) بلون القسم مو أسود.
-  List<BoxShadow> get shadow => [
-    BoxShadow(
-      color: primaryDeep.withValues(alpha: 0.06),
-      blurRadius: 2,
-      offset: const Offset(0, 1),
-    ),
-    BoxShadow(
-      color: primaryDeep.withValues(alpha: 0.06),
-      blurRadius: 10,
-      offset: const Offset(0, 4),
-    ),
-    BoxShadow(
-      color: primaryDeep.withValues(alpha: 0.07),
-      blurRadius: 30,
-      offset: const Offset(0, 14),
-    ),
-  ];
+  /// ظل البطاقات: بارز ناعم.
+  List<BoxShadow> get shadow => raised(0.8);
 
   /// خلفية بطبقات: تدرّج ناعم وإضاءة من الزاوية العليا.
   Gradient get heroGradient => LinearGradient(
@@ -243,7 +287,7 @@ const dental = Brand(
   accent: Color(0xFFDBB686),
   highlight: Color(0xFFDBB686),
   bg: Color(0xFFF4F1EC),
-  card: Color(0xFFFFFFFF),
+  card: Color(0xFFF4F1EC),
   dark: Color(0xFF231F20),
   text: Color(0xFF231F20),
   muted: Color(0xFF6B5F57),
@@ -282,7 +326,7 @@ const beauty = Brand(
   accent: Color(0xFFDBB686),
   highlight: Color(0xFF9C3D4E),
   bg: Color(0xFFF6EEE8),
-  card: Color(0xFFFFFFFF),
+  card: Color(0xFFF6EEE8),
   dark: Color(0xFF3A0712),
   text: Color(0xFF3A0712),
   muted: Color(0xFF7A4A55),
@@ -308,6 +352,87 @@ const beauty = Brand(
   patients: 'المراجعات',
   newPatient: 'مراجعة جديدة',
   feminine: true,
+);
+
+/// الوضع الليلي لعيادة ريڤال: نفس الأحمر والبيج على خلفية داكنة دافية.
+const dentalDark = Brand(
+  section: Section.dental,
+  name: 'عيادة ريڤال',
+  latinName: 'Rival Clinic',
+  tagline: 'ابتسامتك مصمّمة بدقة',
+  primary: Color(0xFFE0472A),
+  primaryDeep: Color(0xFFFF8E6B),
+  accent: Color(0xFFDBB686),
+  highlight: Color(0xFFDBB686),
+  bg: Color(0xFF1C1918),
+  card: Color(0xFF1C1918),
+  dark: Color(0xFF0F0D0C),
+  text: Color(0xFFF4F1EC),
+  muted: Color(0xFFB3A79F),
+  line: Color(0xFF35302D),
+  logoPrimary: 'assets/brand/logo_primary.png',
+  logoReversed: 'assets/brand/logo_reversed.png',
+  logoHorizontal: 'assets/brand/logo_horizontal.png',
+  symbol: 'assets/brand/symbol.png',
+  treatments: [
+    'ابتسامة هوليوود',
+    'فينير',
+    'تقويم',
+    'تقويم شفاف',
+    'تبييض',
+    'زراعة',
+    'حشوات تجميلية',
+    'تنظيف بالبودرة',
+    'أسنان الأطفال',
+    'علاج عصب',
+  ],
+  teethChart: true,
+  alignTarget: AlignTarget.mouth,
+  patient: 'مراجع',
+  patients: 'المراجعين',
+  newPatient: 'مراجع جديد',
+  feminine: false,
+  isDark: true,
+);
+
+/// الوضع الليلي لريڤال بيوتي: النبيذي والشامبين على خلفية نبيذية داكنة.
+const beautyDark = Brand(
+  section: Section.beauty,
+  name: 'ريڤال بيوتي',
+  latinName: 'Rival Beauty',
+  tagline: 'جمالچ الطبيعي بلمسة أوضح',
+  primary: Color(0xFF9C3D4E),
+  primaryDeep: Color(0xFFEBA9B5),
+  accent: Color(0xFFDBB686),
+  highlight: Color(0xFFE08A9A),
+  bg: Color(0xFF1D1114),
+  card: Color(0xFF1D1114),
+  dark: Color(0xFF0F080A),
+  text: Color(0xFFF6EEE8),
+  muted: Color(0xFFC9A5AD),
+  line: Color(0xFF3D262C),
+  logoPrimary: 'assets/brand/beauty_primary.png',
+  logoReversed: 'assets/brand/beauty_reversed.png',
+  logoHorizontal: 'assets/brand/beauty_horizontal.png',
+  symbol: 'assets/brand/beauty_symbol_reversed.png',
+  treatments: [
+    'فلر',
+    'بوتوكس',
+    'نضارة البشرة',
+    'ميزوثيرابي',
+    'تقشير',
+    'بلازما',
+    'خيوط شد',
+    'ليزر',
+    'تنظيف بشرة',
+  ],
+  teethChart: false,
+  alignTarget: AlignTarget.eyes,
+  patient: 'مراجعة',
+  patients: 'المراجعات',
+  newPatient: 'مراجعة جديدة',
+  feminine: true,
+  isDark: true,
 );
 
 extension BrandContext on BuildContext {
@@ -393,6 +518,21 @@ String money(int v) {
     out.write(digits[i]);
   }
   return '${neg ? '-' : ''}${ar(out.toString())} د.ع';
+}
+
+/// مبلغ مختصر للأرقام الكبيرة: ٤٫٢ مليون، ٢٥٠ ألف.
+String moneyShort(int v) {
+  String one(double x) {
+    final t = x >= 100 ? x.round().toString() : x.toStringAsFixed(1);
+    return ar(t.endsWith('.0') ? t.substring(0, t.length - 2) : t)
+        .replaceAll('.', '٫');
+  }
+
+  final a = v.abs();
+  final sign = v < 0 ? '-' : '';
+  if (a >= 1000000) return '$sign${one(a / 1000000)} مليون';
+  if (a >= 1000) return '$sign${one(a / 1000)} ألف';
+  return '$sign${ar(a)}';
 }
 
 /// يقرا رقم مكتوب بأرقام عربية أو إنكليزية، مع فواصل أو بدونها،
