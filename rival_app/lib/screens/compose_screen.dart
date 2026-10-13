@@ -10,9 +10,11 @@ import '../render.dart';
 import '../store.dart';
 import 'common.dart';
 import 'adjust_panel.dart';
+import 'template_gallery.dart';
 import 'design_canvas.dart';
 import 'design_controls.dart';
 import 'elements_bar.dart';
+import 'studio_controls.dart';
 
 /// تصميم قبل وبعد: قوالب الهوية، تحريك الصور بالإصبع، وأدوات التضبيب والرسم.
 class ComposeScreen extends StatefulWidget {
@@ -245,6 +247,136 @@ class _ComposeScreenState extends State<ComposeScreen> {
     }
   }
 
+  /// مقبض خط الدمج فوق المعاينة: تسحبه بإصبعك ويتحرك الدمج ويّاه.
+  Widget? _seamHandle(double scale) {
+    final t = _template, masks = _masks;
+    if (t == null || masks == null) return null;
+    for (var i = 0; i < masks.length && i < t.slots.length; i++) {
+      final m = masks[i];
+      final line = m?.seamIn(t.slots[i]);
+      if (m == null || line == null) continue;
+      final cell = t.slots[i];
+      final dir = m.fadeTo!.withinRect(cell) - m.fadeFrom!.withinRect(cell);
+      final pos = line.$1 * scale;
+      const r = 21.0;
+      return Positioned(
+        left: pos.dx - r,
+        top: pos.dy - r,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onPanUpdate: (d) {
+            final dd = d.delta / scale;
+            final k = (dd.dx * dir.dx + dd.dy * dir.dy) / dir.distanceSquared;
+            setState(() => _fadeShift = (_fadeShift + k).clamp(-0.48, 0.48));
+          },
+          child: Container(
+            width: r * 2,
+            height: r * 2,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.92),
+              shape: BoxShape.circle,
+              boxShadow: const [
+                BoxShadow(color: Color(0x55000000), blurRadius: 10),
+              ],
+            ),
+            child: Transform.rotate(
+              angle: math.atan2(dir.dy, dir.dx),
+              child: const Icon(
+                Icons.swap_horiz,
+                size: 22,
+                color: Color(0xFF231F20),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return null;
+  }
+
+  /// نفس القالب بالمقاسات الثانية (بوست، ستوري، مربع).
+  List<DesignTemplate> _siblings(DesignTemplate t) {
+    final re = RegExp(r'_(post|story|square)(?=_|$)');
+    String key(DesignTemplate x) => x.id.replaceAll(re, '_*');
+    final k = key(t);
+    return [
+      for (final x in templatesFor(_brand.section))
+        if (key(x) == k && x.photos == t.photos) x,
+    ];
+  }
+
+  /// يصدّر التصميم بكل مقاسات القالب مرة وحدة ويحفظها بالمعرض.
+  Future<void> _exportAllSizes() async {
+    final t = _template!;
+    final others = _siblings(t);
+    if (_c.marks.isNotEmpty && others.length > 1) {
+      // التضبيب والرسم مرسومين على هذا المقاس؛ بالمقاسات الثانية ما يطابقن
+      // مكانهن، فما نصدّر تصميم ممكن يكشف شي مخفي.
+      toast(
+        context,
+        'بالتصميم تضبيب أو رسم يخص هذا المقاس. صدّر كل مقاس لحاله.',
+      );
+      return;
+    }
+    setState(() => _exporting = true);
+    final paths = <String>[];
+    try {
+      for (final x in others) {
+        final DesignSpec spec;
+        if (x.id == t.id) {
+          spec = _spec()!;
+        } else {
+          final img = await loadAssetImage(x.asset);
+          final fills = <SlotFill>[];
+          for (var i = 0; i < x.slots.length && i < _c.fills.length; i++) {
+            final which = _c.fills[i].which;
+            final p = _photos[which]!;
+            fills.add(
+              SlotFill(which, fitFraming(x.slots[i], p.$1, p.$2, _base)),
+            );
+          }
+          if (fills.length == 2) {
+            final z = math.max(fills[0].framing.zoom, fills[1].framing.zoom);
+            for (final f in fills) {
+              f.framing = f.framing.copyWith(zoom: z);
+            }
+          }
+          final dir = x.sameFrame ? _fadeDir : null;
+          spec = DesignSpec(
+            brand: _brand,
+            size: x.format.size,
+            slots: x.slots,
+            fills: fills,
+            photos: _photos,
+            template: img,
+            labels: _labels,
+            labelsAtBottom: true,
+            elements: _c.elements,
+            masks: [
+              for (final m in x.masks ?? const <SlotMask?>[])
+                m?.moved(shift: _fadeShift, width: _fadeWidth, dir: dir),
+            ],
+            labelAligns: x.labelAligns,
+            background: x.background,
+            backdrop: x.backdrop,
+            seam: x.seam,
+            adjust: Map.of(_c.adjust),
+          );
+        }
+        final out = await renderDesign(spec);
+        paths.add(await writePng(out, Store.instance.exportPath('png')));
+        out.dispose();
+      }
+      if (!mounted) return;
+      for (final path in paths) {
+        await saveToGallery(context, path);
+      }
+      if (mounted) toast(context, 'انحفظت ${ar(paths.length)} مقاسات بالمعرض');
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
   void _swap() {
     if (_c.fills.length != 2) return;
     final a = _c.fills[0].which;
@@ -253,91 +385,6 @@ class _ComposeScreenState extends State<ComposeScreen> {
     _fit();
   }
 
-  Widget _blendPanel(Brand b) {
-    final t = _template!;
-    final width = _fadeWidth ?? _baseWidth;
-    Widget row(String label, IconData icon, Widget slider) => Row(
-      children: [
-        Icon(icon, size: 18, color: b.muted),
-        const SizedBox(width: 6),
-        SizedBox(
-          width: 70,
-          child: Text(label, style: const TextStyle(fontSize: 12.5)),
-        ),
-        Expanded(child: slider),
-      ],
-    );
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-      decoration: BoxDecoration(
-        color: b.glass,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: b.glassEdge),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.gradient, color: b.primary),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text(
-                  'الدمج والشفافية',
-                  style: TextStyle(fontWeight: FontWeight.w800),
-                ),
-              ),
-              TextButton(
-                onPressed:
-                    _fadeShift == 0 && _fadeWidth == null && _fadeDir == null
-                    ? null
-                    : () => setState(() {
-                        _fadeShift = 0;
-                        _fadeWidth = null;
-                        _fadeDir = null;
-                      }),
-                child: const Text('إرجاع'),
-              ),
-            ],
-          ),
-          if (t.sameFrame)
-            Wrap(
-              spacing: 6,
-              children: [
-                for (final d in FadeDir.values)
-                  ChoiceChip(
-                    label: Text(d.label),
-                    selected: (_fadeDir ?? _templateDir(t)) == d,
-                    onSelected: (_) => setState(() => _fadeDir = d),
-                  ),
-              ],
-            ),
-          row(
-            'مكان الخط',
-            Icons.swap_horiz,
-            Slider(
-              value: _fadeShift,
-              min: -0.45,
-              max: 0.45,
-              onChanged: (v) => setState(() => _fadeShift = v),
-            ),
-          ),
-          row(
-            'النعومة',
-            Icons.blur_linear,
-            Slider(
-              value: width.clamp(0.004, 0.9),
-              min: 0.004,
-              max: 0.9,
-              onChanged: (v) => setState(() => _fadeWidth = v),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// اتجاه القالب الأصلي (حتى يبين محدد).
   FadeDir? _templateDir(DesignTemplate t) {
     for (final m in t.masks ?? const <SlotMask?>[]) {
       if (m == null || !m.fades) continue;
@@ -348,8 +395,354 @@ class _ComposeScreenState extends State<ComposeScreen> {
     return null;
   }
 
+  /// تبويب المحرر المفتوح.
+  int _tab = 0;
+
+  List<(IconData, String, String)> get _tabs => [
+    (Icons.dashboard_customize_outlined, 'القوالب', 'templates'),
+    (Icons.photo_outlined, 'الصور', 'photos'),
+    (Icons.tune, 'الألوان', 'adjust'),
+    if (_template?.blends ?? false) (Icons.gradient, 'الدمج', 'blend'),
+    (Icons.brush_outlined, 'أدوات', 'tools'),
+    (Icons.text_fields, 'نصوص', 'text'),
+  ];
+
+  void _openTab(int i) {
+    // الخروج من الأدوات يرجّع التحريك حتى ما ترسم بالغلط.
+    if (_tabs[_tab].$3 == 'tools' && i != _tab) _c.setTool(null);
+    setState(() => _tab = i);
+  }
+
+  Widget _chip(
+    String label,
+    bool on,
+    VoidCallback tap, {
+    bool choice = false,
+  }) => Padding(
+    padding: const EdgeInsetsDirectional.only(end: 6),
+    child: choice
+        ? ChoiceChip(
+            label: Text(label),
+            selected: on,
+            onSelected: (_) => setState(tap),
+          )
+        : FilterChip(
+            label: Text(label),
+            selected: on,
+            onSelected: (_) => setState(tap),
+          ),
+  );
+
+  Widget _templatesPanel(Brand b, List<DesignTemplate> templates) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              '${ar(templates.length)} قالب',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: b.muted),
+            ),
+          ),
+          FilledButton.tonalIcon(
+            onPressed: () async {
+              final t = await showTemplateGallery(
+                context,
+                templates: _templates,
+                selected: _template,
+              );
+              if (t != null) _applyTemplate(t);
+            },
+            icon: const Icon(Icons.grid_view_rounded, size: 18),
+            label: const Text('كل القوالب'),
+          ),
+        ],
+      ),
+      const SizedBox(height: 6),
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (final (label, f) in const [
+              ('الكل', null),
+              ('بوست', PostFormat.portrait),
+              ('ستوري', PostFormat.story),
+              ('مربع', PostFormat.square),
+            ])
+              _chip(
+                label,
+                _formatFilter == f,
+                () => _formatFilter = f,
+                choice: true,
+              ),
+            _chip(
+              'بدون حواف',
+              _edgelessOnly,
+              () => _edgelessOnly = !_edgelessOnly,
+            ),
+            if (_hasBefore) ...[
+              _chip(
+                'صورتين',
+                _photosFilter == 2,
+                () => _photosFilter = _photosFilter == 2 ? null : 2,
+              ),
+              _chip(
+                'صورة وحدة',
+                _photosFilter == 1,
+                () => _photosFilter = _photosFilter == 1 ? null : 1,
+              ),
+            ],
+          ],
+        ),
+      ),
+      const SizedBox(height: 8),
+      SizedBox(
+        height: 116,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          children: [
+            for (final t in templates)
+              TemplateThumb(
+                asset: t.asset,
+                label: t.label,
+                selected: _template?.id == t.id,
+                onTap: () => _applyTemplate(t),
+              ),
+            if (_hasBefore)
+              TemplateThumb(
+                asset: null,
+                label: 'بدون قالب',
+                selected: _template == null,
+                onTap: () => _applyTemplate(null),
+              ),
+          ],
+        ),
+      ),
+    ],
+  );
+
+  Widget _photosPanel(Brand b) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          if (_slots.length == 1 && _hasBefore)
+            for (final w in Which.values)
+              ChoiceChip(
+                label: Text('صورة ${w.label}'),
+                selected: _single == w,
+                onSelected: (_) {
+                  setState(() => _single = w);
+                  _c.fills = [];
+                  _fit();
+                },
+              )
+          else if (_slots.length == 2)
+            ActionChip(
+              avatar: const Icon(Icons.swap_horiz, size: 18),
+              label: const Text('بدّل مكان الصورتين'),
+              onPressed: _swap,
+            ),
+          if (_hasBefore)
+            FilterChip(
+              label: const Text('كلمة قبل / بعد'),
+              selected: _labels,
+              onSelected: (v) => setState(() => _labels = v),
+            ),
+          ActionChip(
+            avatar: const Icon(Icons.fit_screen, size: 18),
+            label: const Text('ضبط تلقائي'),
+            onPressed: _fit,
+          ),
+        ],
+      ),
+      if (_slots.length == 2)
+        ListenableBuilder(
+          listenable: _c,
+          builder: (context, _) => SwitchListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            value: _c.linked,
+            onChanged: _c.setLinked,
+            title: const Text('حرّك الصورتين سوا'),
+          ),
+        ),
+      Text(
+        'اسحب الصورة بإصبع، وكبّر أو دوّر بإصبعين.',
+        style: TextStyle(color: b.muted, fontSize: 12),
+      ),
+      if (_template == null) ...[
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final f in PostFormat.values)
+              ChoiceChip(
+                label: Text(f.label),
+                selected: _format == f,
+                onSelected: (_) => setState(() {
+                  _format = f;
+                  _layoutChanged();
+                }),
+              ),
+            for (final l in Layout.values)
+              ChoiceChip(
+                label: Text(l.label),
+                selected: _layout == l,
+                onSelected: (_) => setState(() {
+                  _layout = l;
+                  _layoutChanged();
+                }),
+              ),
+            FilterChip(
+              label: Text('إطار ${b.name}'),
+              selected: _brandFrame,
+              onSelected: (v) => setState(() {
+                _brandFrame = v;
+                final name = _c.elementOf(ElementRole.doctor);
+                if (name != null) _placeDoctorName(name);
+              }),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        OverlayPicker(
+          selected: _overlayPath,
+          onChanged: (path) async {
+            _overlayPath = path;
+            _overlay = path == null ? null : await loadImage(path);
+            setState(() {});
+          },
+        ),
+      ],
+    ],
+  );
+
+  Widget _blendPanel(Brand b) {
+    final t = _template!;
+    final width = _fadeWidth ?? _baseWidth;
+    final edited = _fadeShift != 0 || _fadeWidth != null || _fadeDir != null;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: t.sameFrame
+                  ? SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          for (final d in FadeDir.values)
+                            _chip(
+                              d.label,
+                              (_fadeDir ?? _templateDir(t)) == d,
+                              () => _fadeDir = d,
+                              choice: true,
+                            ),
+                        ],
+                      ),
+                    )
+                  : Text(
+                      'اسحب المقبض فوق التصميم، أو حرّك المسطرة.',
+                      style: TextStyle(color: b.muted, fontSize: 12),
+                    ),
+            ),
+            IconButton(
+              tooltip: 'إرجاع',
+              onPressed: edited
+                  ? () => setState(() {
+                      _fadeShift = 0;
+                      _fadeWidth = null;
+                      _fadeDir = null;
+                    })
+                  : null,
+              icon: const Icon(Icons.restart_alt),
+            ),
+          ],
+        ),
+        Text('مكان الخط', style: TextStyle(color: b.muted, fontSize: 12)),
+        RulerSlider(
+          value: _fadeShift,
+          min: -0.48,
+          max: 0.48,
+          onChanged: (v) => setState(() => _fadeShift = v),
+        ),
+        Text('النعومة', style: TextStyle(color: b.muted, fontSize: 12)),
+        RulerSlider(
+          value: width.clamp(0.004, 0.9),
+          min: 0.004,
+          max: 0.9,
+          reset: _baseWidth,
+          format: (v) => '${ar((v * 100).round())}٪',
+          onChanged: (v) => setState(() => _fadeWidth = v),
+        ),
+      ],
+    );
+  }
+
+  /// ورقة الحفظ: معرض، مشاركة، كل المقاسات.
+  Future<void> _exportSheet() async {
+    final siblings = _template == null ? 1 : _siblings(_template!).length;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.download),
+              title: const Text('حفظ بالمعرض'),
+              onTap: () async {
+                Navigator.pop(sheet);
+                final path = await _export();
+                if (mounted) saveToGallery(context, path);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.share),
+              title: const Text('مشاركة'),
+              onTap: () async {
+                Navigator.pop(sheet);
+                shareFile(await _export());
+              },
+            ),
+            if (siblings > 1)
+              ListTile(
+                leading: const Icon(Icons.burst_mode_outlined),
+                title: const Text('كل المقاسات'),
+                subtitle: Text(
+                  'نفس التصميم بوست وستوري${siblings > 2 ? ' ومربع' : ''} مرة وحدة',
+                ),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  _exportAllSizes();
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // المحرر دايماً غامق مثل برامج تعديل الصور: الألوان تبين على حقيقتها.
+    return Theme(
+      data: _brand.night.theme(),
+      child: Builder(builder: _editor),
+    );
+  }
+
+  Widget _editor(BuildContext context) {
     final b = context.brand;
     final templates = [
       for (final t in _templates)
@@ -359,245 +752,119 @@ class _ComposeScreenState extends State<ComposeScreen> {
           t,
     ];
     final spec = _spec();
-    final screen = MediaQuery.of(context).size;
+    final tabs = _tabs;
+    if (_tab >= tabs.length) _tab = 0;
+    final key = tabs[_tab].$3;
+    final panel = switch (key) {
+      'templates' => _templatesPanel(b, templates),
+      'photos' => _photosPanel(b),
+      'adjust' => AdjustPanel(
+        controller: _c,
+        photos: {for (final e in _photos.entries) e.key: e.value.$1},
+      ),
+      'blend' => _blendPanel(b),
+      'tools' => DesignToolbar(
+        controller: _c,
+        twoPhotos: _slots.length == 2,
+        onFit: _fit,
+      ),
+      _ => ListenableBuilder(
+        listenable: _c,
+        builder: (context, _) => ElementsBar(
+          controller: _c,
+          doctor: _doctor,
+          onAddDoctorName: () => setState(_addDoctorName),
+        ),
+      ),
+    };
     final ratio = _size.width / _size.height;
-    final width = math.min(screen.width - 32, screen.height * 0.44 * ratio);
     return Scaffold(
+      backgroundColor: b.bg,
       appBar: AppBar(
-        title: const Text('تصميم قبل وبعد'),
+        backgroundColor: b.bg,
+        title: Text(
+          _template == null ? 'تصميم قبل وبعد' : templateFamily(_template!),
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+        ),
         actions: [
-          IconButton(
-            tooltip: 'مشاركة',
-            onPressed: spec == null || _exporting
-                ? null
-                : () async => shareFile(await _export()),
-            icon: const Icon(Icons.share),
-          ),
-          IconButton(
-            tooltip: 'حفظ بالمعرض',
-            onPressed: spec == null || _exporting
-                ? null
-                : () async {
-                    final path = await _export();
-                    if (context.mounted) saveToGallery(context, path);
-                  },
-            icon: const Icon(Icons.download),
+          Padding(
+            padding: const EdgeInsetsDirectional.only(end: 12),
+            child: FilledButton.icon(
+              onPressed: spec == null || _exporting ? null : _exportSheet,
+              icon: _exporting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.ios_share, size: 18),
+              label: const Text('حفظ'),
+            ),
           ),
         ],
       ),
       body: Column(
         children: [
-          if (_exporting) const LinearProgressIndicator(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-            child: Center(
-              child: Container(
-                width: width,
-                height: width / ratio,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: b.shadow,
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, box) {
+                final w = math.min(
+                  box.maxWidth - 32,
+                  (box.maxHeight - 20) * ratio,
+                );
+                return Center(
+                  child: Container(
+                    width: w,
+                    height: w / ratio,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x66000000),
+                          blurRadius: 30,
+                          offset: Offset(0, 12),
+                        ),
+                      ],
+                    ),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Positioned.fill(
+                          child: DesignCanvas(controller: _c, spec: _spec),
+                        ),
+                        ?_seamHandle(w / _size.width),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.bottomCenter,
+            child: Container(
+              width: double.infinity,
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.36,
+              ),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              decoration: BoxDecoration(
+                color: b.card,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(22),
                 ),
-                child: DesignCanvas(controller: _c, spec: _spec),
+              ),
+              child: SingleChildScrollView(
+                child: KeyedSubtree(key: ValueKey(key), child: panel),
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: DesignToolbar(
-              controller: _c,
-              twoPhotos: _slots.length == 2,
-              onFit: _fit,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-            child: ListenableBuilder(
-              listenable: _c,
-              builder: (context, _) => _c.tool != null
-                  ? const SizedBox.shrink()
-                  : ElementsBar(
-                      controller: _c,
-                      doctor: _doctor,
-                      onAddDoctorName: () => setState(_addDoctorName),
-                    ),
-            ),
-          ),
-          const Divider(height: 16),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      'القالب · ${ar(templates.length)}',
-                      style: TextStyle(color: b.muted),
-                    ),
-                    const Spacer(),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                SizedBox(
-                  width: double.infinity,
-                  child: Wrap(
-                    runSpacing: 4,
-                    children: [
-                      for (final (label, f) in const [
-                        ('الكل', null),
-                        ('بوست', PostFormat.portrait),
-                        ('ستوري', PostFormat.story),
-                        ('مربع', PostFormat.square),
-                      ])
-                        Padding(
-                          padding: const EdgeInsetsDirectional.only(end: 6),
-                          child: ChoiceChip(
-                            label: Text(label),
-                            selected: _formatFilter == f,
-                            onSelected: (_) =>
-                                setState(() => _formatFilter = f),
-                          ),
-                        ),
-                      const SizedBox(width: 10),
-                      FilterChip(
-                        label: const Text('بدون حواف'),
-                        selected: _edgelessOnly,
-                        onSelected: (v) => setState(() => _edgelessOnly = v),
-                      ),
-                      if (_hasBefore) ...[
-                        const SizedBox(width: 6),
-                        for (final (label, n) in const [
-                          ('صورتين', 2),
-                          ('صورة وحدة', 1),
-                        ])
-                          Padding(
-                            padding: const EdgeInsetsDirectional.only(end: 6),
-                            child: FilterChip(
-                              label: Text(label),
-                              selected: _photosFilter == n,
-                              onSelected: (v) =>
-                                  setState(() => _photosFilter = v ? n : null),
-                            ),
-                          ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  height: 116,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    children: [
-                      for (final t in templates)
-                        TemplateThumb(
-                          asset: t.asset,
-                          label: t.label,
-                          selected: _template?.id == t.id,
-                          onTap: () => _applyTemplate(t),
-                        ),
-                      if (_hasBefore)
-                        TemplateThumb(
-                          asset: null,
-                          label: 'بدون قالب',
-                          selected: _template == null,
-                          onTap: () => _applyTemplate(null),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    if (_slots.length == 1 && _hasBefore)
-                      for (final w in Which.values)
-                        ChoiceChip(
-                          label: Text('صورة ${w.label}'),
-                          selected: _single == w,
-                          onSelected: (_) {
-                            setState(() => _single = w);
-                            _c.fills = [];
-                            _fit();
-                          },
-                        )
-                    else if (_slots.length == 2)
-                      ActionChip(
-                        avatar: const Icon(Icons.swap_horiz, size: 18),
-                        label: const Text('بدّل مكان الصورتين'),
-                        onPressed: _swap,
-                      ),
-                    if (_hasBefore)
-                      FilterChip(
-                        label: const Text('كلمة قبل / بعد'),
-                        selected: _labels,
-                        onSelected: (v) => setState(() => _labels = v),
-                      ),
-                  ],
-                ),
-                if (_template?.blends ?? false) ...[
-                  const SizedBox(height: 12),
-                  _blendPanel(b),
-                ],
-                const SizedBox(height: 14),
-                AdjustPanel(
-                  controller: _c,
-                  photos: {for (final e in _photos.entries) e.key: e.value.$1},
-                ),
-                if (_template == null) ...[
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final f in PostFormat.values)
-                        ChoiceChip(
-                          label: Text(f.label),
-                          selected: _format == f,
-                          onSelected: (_) => setState(() {
-                            _format = f;
-                            _layoutChanged();
-                          }),
-                        ),
-                      for (final l in Layout.values)
-                        ChoiceChip(
-                          label: Text(l.label),
-                          selected: _layout == l,
-                          onSelected: (_) => setState(() {
-                            _layout = l;
-                            _layoutChanged();
-                          }),
-                        ),
-                      FilterChip(
-                        label: Text('إطار ${b.name}'),
-                        selected: _brandFrame,
-                        onSelected: (v) => setState(() {
-                          _brandFrame = v;
-                          final name = _c.elementOf(ElementRole.doctor);
-                          if (name != null) _placeDoctorName(name);
-                        }),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  OverlayPicker(
-                    selected: _overlayPath,
-                    onChanged: (path) async {
-                      _overlayPath = path;
-                      _overlay = path == null ? null : await loadImage(path);
-                      setState(() {});
-                    },
-                  ),
-                ],
-                const SizedBox(height: 16),
-                Text(
-                  'النتائج تنشر بموافقة ${b.f('المراجع', 'المراجعة')}. استخدم التضبيب لإخفاء أي تفصيل خاص.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: b.muted, fontSize: 12),
-                ),
-              ],
-            ),
+          EditorTabs(
+            items: [for (final t in tabs) (t.$1, t.$2)],
+            index: _tab,
+            onChanged: _openTab,
           ),
         ],
       ),

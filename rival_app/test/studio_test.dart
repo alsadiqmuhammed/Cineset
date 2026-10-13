@@ -66,7 +66,7 @@ void main() {
     final singles = templatesFor(Section.dental)
         .where((t) => t.photos == 1)
         .length;
-    expect(find.text('القالب · ${ar(singles)}'), findsOneWidget);
+    expect(find.text('${ar(singles)} قالب'), findsOneWidget);
     expect(find.text('بدون قالب'), findsNothing);
     expect(find.text('صورتين'), findsNothing);
   });
@@ -89,10 +89,10 @@ void main() {
     );
     await settle(tester, 12);
     final all = templatesFor(Section.beauty);
-    expect(find.text('القالب · ${ar(all.length)}'), findsOneWidget);
+    expect(find.text('${ar(all.length)} قالب'), findsOneWidget);
     await tester.tap(find.text('ستوري'));
     await tester.pump();
     final stories = all.where((t) => t.format == PostFormat.story).length;
-    expect(find.text('القالب · ${ar(stories)}'), findsOneWidget);
+    expect(find.text('${ar(stories)} قالب'), findsOneWidget);
   });
 }

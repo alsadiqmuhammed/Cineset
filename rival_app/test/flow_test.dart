@@ -166,15 +166,6 @@ void main() {
     // المعاينة الحيّة جاهزة بقالب البوست (صورتين).
     expect(find.byType(DesignCanvas), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
-    final panel = find.ancestor(
-      of: find.textContaining('القالب · '),
-      matching: find.byType(Scrollable),
-    );
-    await tester.scrollUntilVisible(
-      find.text('بوست · صورتين'),
-      120,
-      scrollable: panel.first,
-    );
     expect(find.text('بوست · صورتين'), findsOneWidget);
 
     // نجرب نختار قالب صورة وحدة، ونضبب.
@@ -184,7 +175,11 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('هالة · كريمي · بوست · صورة'));
     await settle(tester);
+    await tester.tap(find.text('الصور'));
+    await tester.pump();
     expect(find.text('صورة بعد'), findsOneWidget);
+    await tester.tap(find.text('أدوات'));
+    await tester.pump();
     await tester.drag(
       find.byIcon(Icons.open_with),
       const Offset(300, 0),

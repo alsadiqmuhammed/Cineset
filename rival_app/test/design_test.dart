@@ -59,8 +59,12 @@ void main() {
         for (final (i, r) in t.slots.indexed) {
           // الشباك اللي يترسم فوق شباك ثاني (دائرة العدسة) يبين من مركزه.
           final mask = t.masks != null ? t.masks![i] : null;
+          // قوالب الخط الفاصل بيها شارة بالنص، فنفحص تحتها شوية.
+          final probe = t.seam != null
+              ? r.center + const Offset(0, 160)
+              : r.center;
           expect(
-            at(px, img.width, r.center).a,
+            at(px, img.width, probe).a,
             lessThan(0.05),
             reason: '${t.id} window',
           );

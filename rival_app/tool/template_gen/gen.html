@@ -421,6 +421,133 @@ F.pano={name:'بانوراما',async draw(ctx,g){const {W,H,p,t}=g;
     if(k===1){const sy=await img(p.sym);const s2=50,w2=sy.width*s2/sy.height;ctx.drawImage(sy,x-w2/2,py-s2/2,w2,s2);}else{star(ctx,x-50,py,14,p.gold);text(ctx,k===0?'بعد':'قبل',x+16,py+2,'800 30px Almarai',p.dark?p.ink:p.ink);}}
   return {slots:[[panel.x,panel.y,panel.w,panel.h],[after.x,after.y,after.w,after.h]],masks:[{radius:30},{feather:30,fadeFrom:[0,1],fadeTo:[0,0.2],fadeStart:0,fadeEnd:0.5}],baked:true,background:true};
 }};
+
+// ١٩ قطري حاد: نفس الوجه بخط مايل وشارة بالنص
+F.sharp={name:'قطري حاد',async draw(ctx,g){const {W,H,p,t}=g;
+  ctx.clearRect(0,0,W,H);
+  const story=g.fmt==='story',sq=g.fmt==='square';
+  vgrad(ctx,0,H*0.18,'#000000',p.dark?0.55:0.35,0);vgrad(ctx,H,H*0.72,p.dark?'#000000':p.bg,p.dark?0.85:0.95,0);
+  const lg=await img(p.dark||true?(g.sec==='dental'?'logo_reversed.png':'beauty_reversed.png'):p.stack);const lh=sq?90:110,lw=lg.width*lh/lg.height;ctx.drawImage(lg,(W-lw)/2,story?120:36,lw,lh);
+  // شارة بالنص على الخط
+  const cx=W/2,cy=H/2;ctx.fillStyle='#FFFFFF';ctx.beginPath();ctx.arc(cx,cy,46,0,7);ctx.fill();
+  ctx.strokeStyle=p.accent2;ctx.lineWidth=4;for(let i=0;i<16;i++){const a=i/16*Math.PI*2;ctx.beginPath();ctx.moveTo(cx+Math.cos(a)*14,cy+Math.sin(a)*14);ctx.lineTo(cx+Math.cos(a)*34,cy+Math.sin(a)*34);ctx.stroke();}
+  text(ctx,'قبل',W-80,story?380:sq?190:230,'64px Ruqaa','#FFFFFF','right');
+  text(ctx,'بعد',80,H-(story?420:sq?250:300),'64px Ruqaa',p.dark?p.gold:p.accent,'left');
+  text(ctx,t.tags[(g.v+1)%5],W/2,H-(story?220:sq?90:110),'800 40px Almarai',p.dark?'#FFFFFF':p.ink);
+  const full=[0,0,W,H];
+  return {slots:[full,full],masks:[null,{fadeFrom:[1,-1],fadeTo:[-1,1],fadeStart:0.498,fadeEnd:0.502}],seam:'#FFFFFF',baked:true,background:true};
+}};
+// ٢٠ حروف كبيرة: «قبل» و«بعد» ضخمة وراء الصور
+F.type={name:'حروف كبيرة',async draw(ctx,g){const {W,H,p,t}=g;
+  ctx.fillStyle=p.dark?'#141010':'#ECE7E1';ctx.fillRect(0,0,W,H);
+  for(let i=0;i<4000;i++){ctx.fillStyle=`rgba(${p.dark?'255,255,255':'0,0,0'},${Math.random()*0.04})`;ctx.fillRect(Math.random()*W,Math.random()*H,2,2);}
+  const story=g.fmt==='story',sq=g.fmt==='square';
+  const big=sq?300:story?380:340;
+  ctx.font=`800 ${big}px Almarai`;ctx.direction='rtl';ctx.textAlign='center';ctx.textBaseline='alphabetic';
+  ctx.fillStyle=p.dark?p.ink:'#231F20';ctx.fillText('قبل',W/2,big*0.95+(story?120:0));
+  const pw=sq?560:story?600:560,ph=sq?330:story?520:400;
+  const s0={x:W-pw-80,y:big*0.62+(story?120:0),w:pw,h:ph};
+  const s1={x:80,y:H-ph-big*0.62-(story?140:0),w:pw,h:ph};
+  shadowFill(ctx,()=>{ctx.beginPath();ctx.rect(s0.x,s0.y,s0.w,s0.h);},'rgba(0,0,0,0.3)',30,14,'#FFF');
+  shadowFill(ctx,()=>{ctx.beginPath();ctx.rect(s1.x,s1.y,s1.w,s1.h);},'rgba(0,0,0,0.3)',30,14,'#FFF');
+  cut(ctx,()=>{ctx.beginPath();ctx.rect(s0.x,s0.y,s0.w,s0.h);});cut(ctx,()=>{ctx.beginPath();ctx.rect(s1.x,s1.y,s1.w,s1.h);});
+  ctx.font=`800 ${big}px Almarai`;ctx.fillStyle=p.dark?p.accent:p.accent2;ctx.textAlign='center';ctx.direction='rtl';ctx.fillText('بعد',W/2,H-big*0.12-(story?140:0));
+  // نص صغير بين الصورتين
+  const my=(s0.y+s0.h+s1.y)/2;
+  text(ctx,t.tags[(g.v+2)%5],W-90,my,'800 34px Almarai',p.dark?p.ink:'#231F20','right');
+  latin(ctx,TXT[g.sec].latin,90,my,'800 18px Almarai',p.dark?p.muted:'#6B5F57','5px','left');
+  return {slots:[[s0.x,s0.y,s0.w,s0.h],[s1.x,s1.y,s1.w,s1.h]],masks:null,baked:true};
+}};
+// ٢١ ممزق: صور على ورق ممزق
+function torn(ctx,x,y,w,h,seed){let r=seed;const rnd=()=>{r=(r*16807)%2147483647;return r/2147483647;};
+  ctx.beginPath();ctx.moveTo(x,y);
+  for(let i=0;i<=40;i++)ctx.lineTo(x+w*i/40,y+(rnd()-0.5)*18);
+  for(let i=0;i<=40;i++)ctx.lineTo(x+w+(rnd()-0.5)*14,y+h*i/40);
+  for(let i=40;i>=0;i--)ctx.lineTo(x+w*i/40,y+h+(rnd()-0.5)*18);
+  for(let i=40;i>=0;i--)ctx.lineTo(x+(rnd()-0.5)*14,y+h*i/40);ctx.closePath();}
+F.torn={name:'ممزق',async draw(ctx,g){const {W,H,p,t}=g;
+  const gr=ctx.createLinearGradient(0,0,0,H);gr.addColorStop(0,p.dark?'#2A2220':'#5C4A42');gr.addColorStop(1,p.dark?'#0F0C0C':'#2E2420');ctx.fillStyle=gr;ctx.fillRect(0,0,W,H);
+  for(let i=0;i<60;i++){ctx.strokeStyle=`rgba(255,255,255,${0.02+Math.random()*0.03})`;ctx.lineWidth=1+Math.random()*3;ctx.beginPath();const y=Math.random()*H;ctx.moveTo(0,y);ctx.bezierCurveTo(W*0.3,y+60,W*0.6,y-60,W,y+20);ctx.stroke();}
+  const story=g.fmt==='story',sq=g.fmt==='square';
+  const pw=sq?470:story?640:560,ph=sq?560:story?700:600;
+  const cards=[{x:W-pw-60,y:sq?90:story?260:120,r:4,s:3},{x:60,y:sq?H-ph-90:story?H-ph-360:H-ph-140,r:-3,s:9}];const slots=[];
+  for(const [i,c] of cards.entries()){
+    ctx.save();ctx.translate(c.x+pw/2,c.y+ph/2);ctx.rotate(c.r*Math.PI/180);
+    ctx.save();ctx.shadowColor='rgba(0,0,0,0.5)';ctx.shadowBlur=30;ctx.shadowOffsetY=12;ctx.fillStyle='#F6F1E8';torn(ctx,-pw/2-22,-ph/2-22,pw+44,ph+44,c.s*7919);ctx.fill();ctx.restore();
+    ctx.save();ctx.globalCompositeOperation='destination-out';ctx.fillStyle='#000';ctx.fillRect(-pw/2,-ph/2,pw,ph);ctx.restore();
+    ctx.restore();
+    const a=Math.abs(c.r*Math.PI/180),hw=pw/2,hh=ph/2,bw=hw*Math.cos(a)+hh*Math.sin(a),bh=hw*Math.sin(a)+hh*Math.cos(a);
+    slots.push([c.x+pw/2-bw,c.y+ph/2-bh,2*bw,2*bh]);
+  }
+  ctx.save();ctx.font='800 120px Almarai';ctx.fillStyle='#FFFFFF';ctx.direction='rtl';ctx.textAlign='left';ctx.textBaseline='middle';
+  ctx.fillText('قبل',60,cards[0].y+ph*0.35);ctx.textAlign='right';ctx.fillText('بعد',W-60,cards[1].y+ph*0.65);ctx.restore();
+  arrow(ctx,170,cards[0].y+ph*0.5,190,cards[0].y+ph*0.75,cards[0].x-10,cards[0].y+ph*0.8,'#FFFFFF',4);
+  arrow(ctx,W-170,cards[1].y+ph*0.5,W-190,cards[1].y+ph*0.25,cards[1].x+pw+10,cards[1].y+ph*0.2,'#FFFFFF',4);
+  const lg=await img(g.sec==='dental'?'logo_reversed.png':'beauty_reversed.png');const lh=sq?80:100,lw=lg.width*lh/lg.height;
+  if(story){ctx.drawImage(lg,(W-lw)/2,90,lw,lh);text(ctx,t.tags[g.v%5],W/2,H-200,'60px Ruqaa',p.gold);}
+  else ctx.drawImage(lg,(W-lw)/2,(cards[0].y+ph+cards[1].y)/2-lh/2,lw,lh);
+  return {slots,masks:null,baked:true};
+}};
+// ٢٢ سكرابوك: بولارويد مايلة على خطوط غامقة
+F.scrap={name:'سكرابوك',async draw(ctx,g){const {W,H,p,t}=g;
+  ctx.fillStyle=p.dark?'#141111':(g.sec==='dental'?'#2B2424':'#2A0E15');ctx.fillRect(0,0,W,H);
+  for(let x=0;x<W;x+=60){ctx.fillStyle='rgba(255,255,255,0.035)';ctx.fillRect(x,0,30,H);}
+  const story=g.fmt==='story',sq=g.fmt==='square';
+  const cw=sq?440:story?560:500,chh=cw*1.18;const pad=26,bot=90;
+  const cards=[{x:W-cw-70,y:sq?70:story?240:110,r:-7},{x:70,y:sq?H-chh-70:story?H-chh-380:H-chh-110,r:6}];const slots=[];
+  for(const [i,c] of cards.entries()){
+    ctx.save();ctx.translate(c.x+cw/2,c.y+chh/2);ctx.rotate(c.r*Math.PI/180);
+    shadowFill(ctx,()=>{ctx.beginPath();ctx.rect(-cw/2,-chh/2,cw,chh);},'rgba(0,0,0,0.6)',40,16,'#FBFAF6');
+    const iw=cw-2*pad,ih=chh-pad-bot;
+    ctx.save();ctx.globalCompositeOperation='destination-out';ctx.fillStyle='#000';ctx.fillRect(-cw/2+pad,-chh/2+pad,iw,ih);ctx.restore();
+    ctx.restore();
+    const oy=-chh/2+pad+ih/2,rr=c.r*Math.PI/180;const cx=c.x+cw/2-oy*Math.sin(rr),cy=c.y+chh/2+oy*Math.cos(rr);
+    const a=Math.abs(rr),bw=iw/2*Math.cos(a)+ih/2*Math.sin(a),bh=iw/2*Math.sin(a)+ih/2*Math.cos(a);slots.push([cx-bw,cy-bh,2*bw,2*bh]);
+  }
+  const col=p.dark?p.gold:'#F4E9DA';
+  text(ctx,'قبل',cards[0].x-120,cards[0].y+70,'800 54px Almarai',col);text(ctx,'بعد',cards[1].x+cw+120,cards[1].y+chh-70,'800 54px Almarai',col);
+  arrow(ctx,cards[0].x-120,cards[0].y+130,cards[0].x-110,cards[0].y+260,cards[0].x-12,cards[0].y+280,col,4);
+  arrow(ctx,cards[1].x+cw+120,cards[1].y+chh-130,cards[1].x+cw+110,cards[1].y+chh-260,cards[1].x+cw+12,cards[1].y+chh-280,col,4);
+  const lg=await img(g.sec==='dental'?'logo_reversed.png':'beauty_reversed.png');const lh=sq?70:90,lw=lg.width*lh/lg.height;
+  if(story){ctx.drawImage(lg,(W-lw)/2,80,lw,lh);text(ctx,t.tags[(g.v+3)%5],W/2,H-190,'60px Ruqaa',col);}
+  else {ctx.drawImage(lg,cards[1].x+cw+70,cards[0].y+chh*0.25 > 0? H/2-lh/2:0,lw,lh);}
+  return {slots,masks:null,baked:true};
+}};
+// ٢٣ دوائر: هادئ وبسيط
+F.circles={name:'دوائر',async draw(ctx,g){const {W,H,p,t}=g;
+  ctx.fillStyle=p.dark?p.bg:'#F1EEE9';ctx.fillRect(0,0,W,H);
+  glow(ctx,W*0.2,H*0.3,W*0.7,'#FFFFFF',p.dark?0.04:0.6);
+  ctx.save();ctx.globalAlpha=p.dark?0.06:0.08;ctx.strokeStyle=p.ink;ctx.lineWidth=2;for(let i=0;i<7;i++){ctx.beginPath();ctx.ellipse(W*0.8,H*0.2,140+i*40,60+i*18,0.6,0,7);ctx.stroke();}ctx.restore();
+  const story=g.fmt==='story',sq=g.fmt==='square';
+  const r=sq?220:story?290:250;
+  const c0={x:W*0.7,y:sq?310:story?620:400},c1={x:W*0.3,y:sq?H-300:story?H-720:H-400};
+  for(const c of [c0,c1]){shadowFill(ctx,()=>{ctx.beginPath();ctx.arc(c.x,c.y,r+10,0,7);},'rgba(60,40,30,0.18)',40,12,p.dark?p.paper:'#FFFFFF');cut(ctx,()=>{ctx.beginPath();ctx.arc(c.x,c.y,r,0,7);});}
+  ctx.strokeStyle=p.dark?p.gold:p.ink;ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(c0.x-r-20,c0.y);ctx.lineTo(80,c0.y);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(c1.x+r+20,c1.y);ctx.lineTo(W-80,c1.y);ctx.stroke();
+  text(ctx,'قبل',80,c0.y-40,'72px Ruqaa',p.ink,'left');
+  text(ctx,'بعد',W-80,c1.y-40,'72px Ruqaa',p.ink,'right');
+  heartish(ctx,W/2,(c0.y+c1.y)/2,p.dark?p.gold:p.accent);
+  await brandLogo(ctx,g,W/2,story?110:sq?24:36,sq?40:48);
+  if(!sq)text(ctx,t.tags[(g.v+4)%5],W/2,H-(story?200:70),'800 32px Almarai',p.dark?p.ink:p.ink);
+  return {slots:[[c0.x-r,c0.y-r,2*r,2*r],[c1.x-r,c1.y-r,2*r,2*r]],masks:[{shape:'oval'},{shape:'oval'}],baked:true,background:true};
+}};
+function heartish(ctx,x,y,col){ctx.strokeStyle=col;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x,y+22);ctx.bezierCurveTo(x-36,y-4,x-20,y-30,x,y-12);ctx.bezierCurveTo(x+20,y-30,x+36,y-4,x,y+22);ctx.stroke();}
+// ٢٤ إطار خطي: صورتين فوق بعض بإطارات رفيعة وكلمات عمودية
+F.lines={name:'إطار خطي',async draw(ctx,g){const {W,H,p,t}=g;
+  ctx.fillStyle=p.dark?'#151111':(g.sec==='dental'?'#211C1B':'#24080F');ctx.fillRect(0,0,W,H);
+  const story=g.fmt==='story',sq=g.fmt==='square';
+  const top=sq?60:story?220:70,bot=sq?H-60:story?H-300:H-160,gap=34,x=110,w=W-170;
+  const h=(bot-top-gap)/2;const s0=[x,top,w,h],s1=[x,top+h+gap,w,h];
+  cut(ctx,()=>{ctx.beginPath();ctx.rect(...s0);});cut(ctx,()=>{ctx.beginPath();ctx.rect(...s1);});
+  ctx.strokeStyle='rgba(255,255,255,0.92)';ctx.lineWidth=4;
+  for(const s of [s0,s1]){ctx.strokeRect(s[0]+40,s[1]+40,s[2]-80,s[3]-80);}
+  const col=p.dark?p.gold:'#F4F1EC';
+  for(const [i,s] of [s0,s1].entries()){ctx.save();ctx.translate(55,s[1]+s[3]/2);ctx.rotate(-Math.PI/2);text(ctx,i===0?'قبل':'بعد',0,0,'800 36px Almarai',col);ctx.restore();}
+  if(!sq){const sym=await img(g.sec==='dental'?'logo_reversed.png':'beauty_reversed.png');const lh=story?110:80,lw=sym.width*lh/sym.height;ctx.drawImage(sym,(W-lw)/2,bot+(H-bot-lh)/2,lw,lh);}
+  if(story){text(ctx,t.tags[g.v%5],W/2,120,'60px Ruqaa',col);}
+  return {slots:[s0,s1],masks:null,baked:true};
+}};
 window.FAMS=Object.keys(F);
 window.render=async function(sec,fam,pal,fmt,v){
   await document.fonts.load('800 20px Almarai');await document.fonts.load('400 20px Almarai');await document.fonts.load('20px Ruqaa');

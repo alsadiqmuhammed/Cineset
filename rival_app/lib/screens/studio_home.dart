@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -12,6 +13,7 @@ import '../store.dart';
 import 'common.dart';
 import 'compose_screen.dart';
 import 'design_controls.dart';
+import 'template_gallery.dart';
 
 /// الشاشة الرئيسية لريڤال ستوديو: القسم، صورتين، وتصميم.
 class StudioHome extends StatefulWidget {
@@ -26,11 +28,45 @@ class _StudioHomeState extends State<StudioHome> {
   final Set<Which> _busy = {};
   late final _aligner = AutoAligner(Store.instance.brand.alignTarget);
   List<File> _designs = [];
+  List<_Case> _cases = [];
 
   @override
   void initState() {
     super.initState();
     _loadDesigns();
+    _loadCases();
+  }
+
+  File get _casesFile => File('${Store.instance.root.path}/studio_cases.json');
+
+  /// الحالات السابقة (صور القبل والبعد) حتى ترجع تصمم منها بقالب ثاني.
+  void _loadCases() {
+    try {
+      final f = _casesFile;
+      if (!f.existsSync()) return;
+      final list = (jsonDecode(f.readAsStringSync()) as List)
+          .map((e) => _Case.fromJson(e as Map<String, dynamic>))
+          .where((c) => File(c.after.path).existsSync())
+          .toList();
+      setState(() => _cases = list);
+    } catch (_) {
+      // ملف تالف: نبدي من جديد.
+    }
+  }
+
+  void _saveCases() {
+    try {
+      _casesFile.writeAsStringSync(
+        jsonEncode([for (final c in _cases) c.toJson()]),
+      );
+    } catch (_) {}
+  }
+
+  void _remember(Photo? before, Photo after) {
+    _cases.removeWhere((c) => c.after.path == after.path);
+    _cases.insert(0, _Case(before, after, DateTime.now()));
+    if (_cases.length > 24) _cases = _cases.sublist(0, 24);
+    _saveCases();
   }
 
   @override
@@ -114,6 +150,7 @@ class _StudioHomeState extends State<StudioHome> {
     final after = _photos[Which.after] ?? _photos[Which.before];
     if (after == null) return;
     final before = _photos[Which.after] == null ? null : _photos[Which.before];
+    setState(() => _remember(before, after));
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -150,7 +187,7 @@ class _StudioHomeState extends State<StudioHome> {
                         ),
                       ),
                       Text(
-                        'تصميم حالات قبل وبعد · ${ar(count)} قالب',
+                        'تصميم حالات قبل وبعد، ${ar(count)} قالب',
                         style: TextStyle(color: b.muted, fontSize: 13),
                       ),
                     ],
@@ -166,7 +203,14 @@ class _StudioHomeState extends State<StudioHome> {
                   StudioApp.of(context)
                       .choose(i == 0 ? Section.dental : Section.beauty),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
+            _Steps(
+              done: [
+                _photos[Which.before] != null,
+                _photos[Which.after] != null,
+              ],
+            ),
+            const SizedBox(height: 14),
             Row(
               children: [
                 for (final w in Which.values) ...[
@@ -246,21 +290,98 @@ class _StudioHomeState extends State<StudioHome> {
                 separatorBuilder: (_, _) => const SizedBox(width: 10),
                 itemBuilder: (context, i) {
                   final t = templatesFor(b.section)[i];
-                  return ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: Container(
-                      color: b.line.withValues(alpha: 0.5),
-                      child: Image.asset(
-                        t.asset,
-                        height: 150,
-                        fit: BoxFit.contain,
-                        cacheHeight: 300,
+                  return GestureDetector(
+                    onTap: () => showTemplateGallery(
+                      context,
+                      templates: templatesFor(b.section),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        color: b.line.withValues(alpha: 0.5),
+                        child: Image.asset(
+                          t.asset,
+                          height: 150,
+                          fit: BoxFit.contain,
+                          cacheHeight: 300,
+                        ),
                       ),
                     ),
                   );
                 },
               ),
             ),
+            if (_cases.isNotEmpty) ...[
+              const SizedBox(height: 26),
+              Text(
+                'حالات سابقة',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: b.text,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'اضغط حتى تصمم نفس الحالة بقالب ثاني، وطوّل الضغط للحذف.',
+                style: TextStyle(color: b.muted, fontSize: 12),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 112,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _cases.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 10),
+                  itemBuilder: (context, i) {
+                    final c = _cases[i];
+                    return GestureDetector(
+                      onTap: () => setState(() {
+                        _photos
+                          ..clear()
+                          ..[Which.after] = c.after;
+                        if (c.before != null) _photos[Which.before] = c.before!;
+                      }),
+                      onLongPress: () => setState(() {
+                        _cases.removeAt(i);
+                        _saveCases();
+                      }),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: SizedBox(
+                          width: c.before == null ? 84 : 150,
+                          child: Row(
+                            children: [
+                              if (c.before != null)
+                                Expanded(
+                                  child: Image.file(
+                                    File(c.before!.path),
+                                    fit: BoxFit.cover,
+                                    height: 112,
+                                    cacheWidth: 200,
+                                    errorBuilder: (_, _, _) =>
+                                        const SizedBox.shrink(),
+                                  ),
+                                ),
+                              Expanded(
+                                child: Image.file(
+                                  File(c.after.path),
+                                  fit: BoxFit.cover,
+                                  height: 112,
+                                  cacheWidth: 200,
+                                  errorBuilder: (_, _, _) =>
+                                      const SizedBox.shrink(),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
             if (_designs.isNotEmpty) ...[
               const SizedBox(height: 26),
               Text(
@@ -440,6 +561,91 @@ class _PhotoTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _Case {
+  final Photo? before;
+  final Photo after;
+  final DateTime at;
+  const _Case(this.before, this.after, this.at);
+
+  Map<String, dynamic> toJson() => {
+    if (before != null) 'before': before!.toJson(),
+    'after': after.toJson(),
+    'at': at.millisecondsSinceEpoch,
+  };
+
+  factory _Case.fromJson(Map<String, dynamic> j) => _Case(
+    j['before'] == null
+        ? null
+        : Photo.fromJson(j['before'] as Map<String, dynamic>),
+    Photo.fromJson(j['after'] as Map<String, dynamic>),
+    DateTime.fromMillisecondsSinceEpoch(j['at'] as int),
+  );
+}
+
+/// ثلاث خطوات: صورة القبل، صورة البعد، التصميم.
+class _Steps extends StatelessWidget {
+  final List<bool> done;
+  const _Steps({required this.done});
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    final ready = done.any((d) => d);
+    final steps = [
+      ('١', 'القبل', done[0]),
+      ('٢', 'البعد', done[1]),
+      ('٣', 'صمّم', false),
+    ];
+    return Row(
+      children: [
+        for (final (i, (n, label, ok)) in steps.indexed) ...[
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            width: 30,
+            height: 30,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: ok || (i == 2 && ready) ? b.action : null,
+              color: ok || (i == 2 && ready) ? null : b.glass,
+              border: Border.all(color: b.glassEdge),
+            ),
+            child: ok
+                ? const Icon(Icons.check, size: 16, color: Colors.white)
+                : Text(
+                    n,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: i == 2 && ready ? Colors.white : b.muted,
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: ok ? b.text : b.muted,
+            ),
+          ),
+          if (i < 2)
+            Expanded(
+              child: Container(
+                height: 2,
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: ok ? b.primary : b.line,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+        ],
+      ],
     );
   }
 }
