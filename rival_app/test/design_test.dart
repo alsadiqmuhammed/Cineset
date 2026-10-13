@@ -64,9 +64,14 @@ void main() {
             reason: '${t.id} below window',
           );
         }
-        // "قبل" (أول شباك) باليمين.
+        // "قبل" (أول شباك) باليمين، أو فوق بالقوالب العمودية.
         if (t.slots.length == 2) {
-          expect(t.slots[0].center.dx, greaterThan(t.slots[1].center.dx));
+          final (a, b) = (t.slots[0].center, t.slots[1].center);
+          if (a.dx == b.dx) {
+            expect(a.dy, lessThan(b.dy), reason: t.id);
+          } else {
+            expect(a.dx, greaterThan(b.dx), reason: t.id);
+          }
         }
       }
     },

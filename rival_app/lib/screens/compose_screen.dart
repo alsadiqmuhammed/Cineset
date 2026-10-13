@@ -16,8 +16,24 @@ import 'elements_bar.dart';
 /// تصميم قبل وبعد: قوالب الهوية، تحريك الصور بالإصبع، وأدوات التضبيب والرسم.
 class ComposeScreen extends StatefulWidget {
   final Patient? patient;
-  final CaseRecord record;
-  const ComposeScreen({super.key, this.patient, required this.record});
+
+  /// صورة القبل اختيارية: بدونها تشتغل قوالب الصورة الوحدة بس.
+  final Photo? before;
+  final Photo after;
+  final String? doctorId;
+
+  ComposeScreen({super.key, this.patient, required CaseRecord record})
+    : before = record.before,
+      after = record.after!,
+      doctorId = record.doctorId;
+
+  /// تصميم من صور مختارة مباشرة (تطبيق ريڤال ستوديو).
+  const ComposeScreen.photos({
+    super.key,
+    this.before,
+    required this.after,
+    this.doctorId,
+  }) : patient = null;
 
   @override
   State<ComposeScreen> createState() => _ComposeScreenState();
@@ -27,7 +43,9 @@ class _ComposeScreenState extends State<ComposeScreen> {
   final _c = DesignController();
   final Map<Which, (ui.Image, Photo)> _photos = {};
   ui.Image? _logo, _templateImg, _overlay;
-  late DesignTemplate? _template = templatesFor(_brand.section).first;
+  late DesignTemplate? _template = _templates.first;
+  PostFormat? _formatFilter;
+  int? _photosFilter;
   PostFormat _format = PostFormat.portrait;
   Layout _layout = Layout.sideBySide;
   Which _single = Which.after;
@@ -41,15 +59,25 @@ class _ComposeScreenState extends State<ComposeScreen> {
 
   Brand get _brand => Store.instance.brand;
 
+  bool get _hasBefore => widget.before != null;
+
+  /// القوالب اللي تنفع للصور الموجودة.
+  List<DesignTemplate> get _templates => [
+    for (final t in templatesFor(_brand.section))
+      if (_hasBefore || t.photos == 1) t,
+  ];
+
   @override
   void initState() {
     super.initState();
     _c.addListener(() => _exported = null);
     () async {
-      final r = widget.record;
+      final before = widget.before, after = widget.after;
       try {
-        _photos[Which.before] = (await loadImage(r.before!.path), r.before!);
-        _photos[Which.after] = (await loadImage(r.after!.path), r.after!);
+        if (before != null) {
+          _photos[Which.before] = (await loadImage(before.path), before);
+        }
+        _photos[Which.after] = (await loadImage(after.path), after);
       } catch (e) {
         // صورة بعدها تنزل من جهاز ثاني أو انحذفت: نرجع برسالة بدل التحميل للأبد.
         if (!mounted) return;
@@ -121,7 +149,8 @@ class _ComposeScreenState extends State<ComposeScreen> {
     if (name != null) _placeDoctorName(name);
   }
 
-  Doctor? get _doctor => Store.instance.doctor(widget.record.doctorId);
+  Doctor? get _doctor =>
+      widget.doctorId == null ? null : Store.instance.doctor(widget.doctorId);
 
   void _addDoctorName() {
     final d = _doctor;
@@ -193,7 +222,12 @@ class _ComposeScreenState extends State<ComposeScreen> {
   @override
   Widget build(BuildContext context) {
     final b = context.brand;
-    final templates = templatesFor(b.section);
+    final templates = [
+      for (final t in _templates)
+        if ((_formatFilter == null || t.format == _formatFilter) &&
+            (_photosFilter == null || t.photos == _photosFilter))
+          t,
+    ];
     final spec = _spec();
     final screen = MediaQuery.of(context).size;
     final ratio = _size.width / _size.height;
@@ -264,8 +298,55 @@ class _ComposeScreenState extends State<ComposeScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               children: [
-                Text('القالب', style: TextStyle(color: b.muted)),
+                Row(
+                  children: [
+                    Text(
+                      'القالب · ${ar(templates.length)}',
+                      style: TextStyle(color: b.muted),
+                    ),
+                    const Spacer(),
+                  ],
+                ),
                 const SizedBox(height: 6),
+                SizedBox(
+                  height: 38,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      for (final (label, f) in const [
+                        ('الكل', null),
+                        ('بوست', PostFormat.portrait),
+                        ('ستوري', PostFormat.story),
+                      ])
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(end: 6),
+                          child: ChoiceChip(
+                            label: Text(label),
+                            selected: _formatFilter == f,
+                            onSelected: (_) =>
+                                setState(() => _formatFilter = f),
+                          ),
+                        ),
+                      if (_hasBefore) ...[
+                        const SizedBox(width: 10),
+                        for (final (label, n) in const [
+                          ('صورتين', 2),
+                          ('صورة وحدة', 1),
+                        ])
+                          Padding(
+                            padding: const EdgeInsetsDirectional.only(end: 6),
+                            child: FilterChip(
+                              label: Text(label),
+                              selected: _photosFilter == n,
+                              onSelected: (v) =>
+                                  setState(() => _photosFilter = v ? n : null),
+                            ),
+                          ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
                 SizedBox(
                   height: 116,
                   child: ListView(
@@ -278,12 +359,13 @@ class _ComposeScreenState extends State<ComposeScreen> {
                           selected: _template?.id == t.id,
                           onTap: () => _applyTemplate(t),
                         ),
-                      TemplateThumb(
-                        asset: null,
-                        label: 'بدون قالب',
-                        selected: _template == null,
-                        onTap: () => _applyTemplate(null),
-                      ),
+                      if (_hasBefore)
+                        TemplateThumb(
+                          asset: null,
+                          label: 'بدون قالب',
+                          selected: _template == null,
+                          onTap: () => _applyTemplate(null),
+                        ),
                     ],
                   ),
                 ),
@@ -292,7 +374,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    if (_slots.length == 1)
+                    if (_slots.length == 1 && _hasBefore)
                       for (final w in Which.values)
                         ChoiceChip(
                           label: Text('صورة ${w.label}'),
@@ -303,17 +385,18 @@ class _ComposeScreenState extends State<ComposeScreen> {
                             _fit();
                           },
                         )
-                    else
+                    else if (_slots.length == 2)
                       ActionChip(
                         avatar: const Icon(Icons.swap_horiz, size: 18),
                         label: const Text('بدّل مكان الصورتين'),
                         onPressed: _swap,
                       ),
-                    FilterChip(
-                      label: const Text('كلمة قبل / بعد'),
-                      selected: _labels,
-                      onSelected: (v) => setState(() => _labels = v),
-                    ),
+                    if (_hasBefore)
+                      FilterChip(
+                        label: const Text('كلمة قبل / بعد'),
+                        selected: _labels,
+                        onSelected: (v) => setState(() => _labels = v),
+                      ),
                   ],
                 ),
                 if (_template == null) ...[

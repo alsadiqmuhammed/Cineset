@@ -169,6 +169,8 @@ void main() {
     expect(find.text('بوست · صورتين'), findsOneWidget);
 
     // نجرب نختار قالب صورة وحدة، ونضبب.
+    await tester.ensureVisible(find.text('بوست · صورة'));
+    await tester.pump();
     await tester.tap(find.text('بوست · صورة'));
     await settle(tester);
     expect(find.text('صورة بعد'), findsOneWidget);

@@ -29,6 +29,22 @@ android {
         versionName = flutter.versionName
     }
 
+    // تطبيقين من نفس الكود: العيادة كاملة، وريڤال ستوديو بس لتصميم الحالات.
+    // flutter build apk --flavor clinic
+    // flutter build apk --flavor studio -t lib/main_studio.dart
+    flavorDimensions += "app"
+    productFlavors {
+        create("clinic") {
+            dimension = "app"
+            manifestPlaceholders["appName"] = "ريڤال"
+        }
+        create("studio") {
+            dimension = "app"
+            applicationIdSuffix = ".studio"
+            manifestPlaceholders["appName"] = "ريڤال ستوديو"
+        }
+    }
+
     // مفتاح التوقيع: كل النسخ لازم تنوقّع بنفس المفتاح حتى التحديث ينصب فوق
     // القديم بدون ما تنمسح بيانات التلفون. الملف ما ينرفع للمستودع
     // (android/.gitignore)؛ صاحب التطبيق محتفظ بنسخة منه.

@@ -31,7 +31,12 @@
 ## البناء
 ```bash
 flutter test
-flutter build apk --release --split-per-abi --target-platform android-arm64
+# تطبيق العيادة
+flutter build apk --release --split-per-abi --target-platform android-arm64 --flavor clinic
+# ريڤال ستوديو: تطبيق منفصل بس لتصميم حالات قبل وبعد (٣٢ قالب لكل قسم)
+flutter build apk --release --split-per-abi --target-platform android-arm64 --flavor studio -t lib/main_studio.dart
 ```
+
+قوالب الستوديو هي نفس قوالب العيادة (`lib/design.dart`)، فأي قالب جديد يطلع بالتطبيقين.
 
 النسخة موقّعة بمفتاح debug. قبل التوزيع على أجهزة العيادة اعمل مفتاح release ثابت.
