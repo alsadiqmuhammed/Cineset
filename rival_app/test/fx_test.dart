@@ -123,6 +123,65 @@ void main() {
     expect(PhotoAdjust.fromPixels(fill(230, 200, 90)).warmth, lessThan(0));
   });
 
+  test('moving the blend shifts where after starts', () async {
+    const m = SlotMask(
+      fadeFrom: Alignment(1, 0),
+      fadeTo: Alignment(-1, 0),
+      fadeStart: 0.45,
+      fadeEnd: 0.55,
+    );
+    // الخط ينزاح لليمين (بداية التدرّج من اليمين): بعد تغطي أكثر.
+    final px = await draw(masks: [null, m.moved(shift: -0.3)]);
+    expect(at(px, 400, const Offset(300, 200)).b, greaterThan(0.95));
+    // اتجاه أفقي: قبل فوق وبعد تحت.
+    final h = await draw(
+      masks: [
+        null,
+        m.moved(dir: FadeDir.horizontal),
+      ],
+    );
+    expect(at(h, 400, const Offset(200, 20)), red);
+    expect(at(h, 400, const Offset(200, 380)), blue);
+    // عرض الذوبان ما يطلع برّه الحدود.
+    final wide = m.moved(width: 5);
+    expect(wide.fadeStart, greaterThanOrEqualTo(0));
+    expect(wide.fadeEnd, lessThanOrEqualTo(1));
+  });
+
+  test('mono turns its photo grey and the seam draws a line', () async {
+    final px = await draw(
+      slots: const [full],
+      masks: const [SlotMask(mono: true)],
+    );
+    final c = at(px, 400, const Offset(200, 200));
+    expect(c.r, closeTo(c.g, 0.02));
+    final before = await solid(red), after = await solid(blue);
+    final spec = DesignSpec(
+      brand: dental,
+      size: size,
+      slots: const [full, full],
+      fills: [SlotFill(Which.before), SlotFill(Which.after)],
+      photos: {
+        Which.before: (before, const Photo('b')),
+        Which.after: (after, const Photo('a')),
+      },
+      labels: false,
+      masks: const [
+        null,
+        SlotMask(
+          fadeFrom: Alignment(1, 0),
+          fadeTo: Alignment(-1, 0),
+          fadeStart: 0.49,
+          fadeEnd: 0.51,
+        ),
+      ],
+      seam: const Color(0xFFFFFFFF),
+    );
+    final line = await pixels(await renderDesign(spec));
+    final mid = at(line, 400, const Offset(200, 200));
+    expect(mid.g, greaterThan(0.5)); // أبيض على الخط
+  });
+
   test('blurred backdrop fills the design behind the photos', () async {
     final px = await draw(
       slots: const [Rect.fromLTWH(150, 150, 100, 100)],

@@ -74,7 +74,12 @@ void main() {
           );
         }
         // "قبل" (أول شباك) باليمين، أو فوق بالقوالب العمودية.
-        if (t.slots.length == 2 && t.slots[0] != t.slots[1]) {
+        // شباك جوّه الثاني (صورة صغيرة فوق خلفية) ما إله يمين ويسار.
+        final nested =
+            t.slots.length == 2 &&
+            (t.slots[0].expandToInclude(t.slots[1]) == t.slots[0] ||
+                t.slots[1].expandToInclude(t.slots[0]) == t.slots[1]);
+        if (t.slots.length == 2 && !nested) {
           final (a, b) = (t.slots[0].center, t.slots[1].center);
           if (a.dx == b.dx) {
             expect(a.dy, lessThan(b.dy), reason: t.id);

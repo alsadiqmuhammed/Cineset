@@ -24,6 +24,9 @@ class SlotMask {
   final Alignment? fadeFrom, fadeTo;
   final double fadeStart, fadeEnd;
 
+  /// الصورة بالأبيض والأسود (خلفية رمادية وراء صورة ملوّنة).
+  final bool mono;
+
   const SlotMask({
     this.shape = SlotShape.rect,
     this.radius = 0,
@@ -32,9 +35,58 @@ class SlotMask {
     this.fadeTo,
     this.fadeStart = 0,
     this.fadeEnd = 1,
+    this.mono = false,
   });
 
   bool get soft => feather > 0 || fadeFrom != null;
+  bool get fades => fadeFrom != null && fadeTo != null;
+
+  /// نفس القناع بس خط الدمج تحرّك: [shift] يزحزح مكانه (نسبة من الشباك)،
+  /// [width] عرض منطقة الذوبان، و[dir] اتجاهه.
+  SlotMask moved({double shift = 0, double? width, FadeDir? dir}) {
+    if (!fades) return this;
+    final w = (width ?? fadeEnd - fadeStart).clamp(0.004, 0.9);
+    final c = ((fadeStart + fadeEnd) / 2 + shift).clamp(w / 2, 1 - w / 2);
+    final (from, to) = dir?.ends ?? (fadeFrom!, fadeTo!);
+    return SlotMask(
+      shape: shape,
+      radius: radius,
+      feather: feather,
+      fadeFrom: from,
+      fadeTo: to,
+      fadeStart: c - w / 2,
+      fadeEnd: c + w / 2,
+      mono: mono,
+    );
+  }
+
+  /// خط الدمج (منتصف التدرّج) داخل [cell]: نقطة عليه واتجاهه.
+  (Offset, Offset)? seamIn(Rect cell) {
+    if (!fades) return null;
+    final a = fadeFrom!.withinRect(cell), b = fadeTo!.withinRect(cell);
+    final p = Offset.lerp(a, b, (fadeStart + fadeEnd) / 2)!;
+    final d = b - a;
+    return (p, Offset(-d.dy, d.dx));
+  }
+}
+
+/// اتجاه الدمج بين قبل وبعد (لما الصورتين بنفس الشباك).
+enum FadeDir {
+  vertical('عمودي'),
+  horizontal('أفقي'),
+  diagonal('قطري'),
+  diagonal2('قطري معكوس');
+
+  final String label;
+  const FadeDir(this.label);
+
+  /// قبل تبين من البداية، وبعد من النهاية.
+  (Alignment, Alignment) get ends => switch (this) {
+    FadeDir.vertical => (Alignment.centerRight, Alignment.centerLeft),
+    FadeDir.horizontal => (Alignment.topCenter, Alignment.bottomCenter),
+    FadeDir.diagonal => (Alignment.topRight, Alignment.bottomLeft),
+    FadeDir.diagonal2 => (Alignment.topLeft, Alignment.bottomRight),
+  };
 }
 
 // الأشكال بمربع وحدة (0..1)، نفس الأرقام اللي ترسم فتحات القوالب.

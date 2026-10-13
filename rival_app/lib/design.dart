@@ -36,6 +36,9 @@ class DesignTemplate {
   /// القالب بيه كلمة قبل/بعد مرسومة، فشارات التطبيق تنطفي تلقائياً.
   final bool bakedLabels;
 
+  /// خط رفيع على حد الدمج (يتحرك ويّا الدمج).
+  final Color? seam;
+
   const DesignTemplate(
     this.id,
     this.label,
@@ -47,12 +50,19 @@ class DesignTemplate {
     this.background,
     this.backdrop = false,
     this.bakedLabels = false,
+    this.seam,
   });
 
   int get photos => slots.length;
 
   /// بدون حواف: الصورة تذوب بالخلفية أو بالصورة الثانية.
   bool get edgeless => masks?.any((m) => m?.soft ?? false) ?? false;
+
+  /// بيه دمج يتحرك (تدرّج بين الصورتين أو للخلفية).
+  bool get blends => masks?.any((m) => m?.fades ?? false) ?? false;
+
+  /// الصورتين بنفس الشباك: الدمج يكدر يغيّر اتجاهه.
+  bool get sameFrame => slots.length == 2 && slots[0] == slots[1];
 }
 
 const _t = 'assets/templates';
@@ -61,28 +71,28 @@ const dentalTemplates = [
   DesignTemplate(
     'dental_post_2',
     'بوست · صورتين',
-    '$_t/dental_post_2.png',
+    '$_t/dental_post_2.webp',
     PostFormat.portrait,
     [Rect.fromLTRB(555, 240, 980, 1050), Rect.fromLTRB(100, 240, 525, 1050)],
   ),
   DesignTemplate(
     'dental_post_1',
     'بوست · صورة',
-    '$_t/dental_post_1.png',
+    '$_t/dental_post_1.webp',
     PostFormat.portrait,
     [Rect.fromLTRB(110, 240, 970, 1050)],
   ),
   DesignTemplate(
     'dental_story_2',
     'ستوري · صورتين',
-    '$_t/dental_story_2.png',
+    '$_t/dental_story_2.webp',
     PostFormat.story,
     [Rect.fromLTRB(555, 370, 980, 1420), Rect.fromLTRB(100, 370, 525, 1420)],
   ),
   DesignTemplate(
     'dental_story_1',
     'ستوري · صورة',
-    '$_t/dental_story_1.png',
+    '$_t/dental_story_1.webp',
     PostFormat.story,
     [Rect.fromLTRB(110, 370, 970, 1420)],
   ),
@@ -288,28 +298,28 @@ const beautyTemplates = [
   DesignTemplate(
     'beauty_post_2',
     'بوست · صورتين',
-    '$_t/beauty_post_2.png',
+    '$_t/beauty_post_2.webp',
     PostFormat.portrait,
     [Rect.fromLTRB(558, 320, 970, 1050), Rect.fromLTRB(110, 250, 522, 980)],
   ),
   DesignTemplate(
     'beauty_post_1',
     'بوست · صورة',
-    '$_t/beauty_post_1.png',
+    '$_t/beauty_post_1.webp',
     PostFormat.portrait,
     [Rect.fromLTRB(160, 250, 920, 1050)],
   ),
   DesignTemplate(
     'beauty_story_2',
     'ستوري · صورتين',
-    '$_t/beauty_story_2.png',
+    '$_t/beauty_story_2.webp',
     PostFormat.story,
     [Rect.fromLTRB(558, 450, 970, 1420), Rect.fromLTRB(110, 380, 522, 1350)],
   ),
   DesignTemplate(
     'beauty_story_1',
     'ستوري · صورة',
-    '$_t/beauty_story_1.png',
+    '$_t/beauty_story_1.webp',
     PostFormat.story,
     [Rect.fromLTRB(140, 380, 940, 1420)],
   ),
@@ -589,6 +599,7 @@ class DesignSpec {
   final List<Alignment>? labelAligns;
   final Color? background;
   final bool backdrop;
+  final Color? seam;
 
   /// تعديل الإضاءة والألوان لكل صورة.
   final Map<Which, PhotoAdjust> adjust;
@@ -611,6 +622,7 @@ class DesignSpec {
     this.background,
     this.backdrop = false,
     this.adjust = const {},
+    this.seam,
   });
 
   /// القالب يجيب الأقنعة والخلفية ويّاه.
@@ -632,7 +644,8 @@ class DesignSpec {
        masks = t.masks,
        labelAligns = t.labelAligns,
        background = t.background,
-       backdrop = t.backdrop;
+       backdrop = t.backdrop,
+       seam = t.seam;
 
   Alignment labelAlign(int i) => labelAligns != null && i < labelAligns!.length
       ? labelAligns![i]
@@ -667,6 +680,7 @@ class DesignSpec {
     background: background,
     backdrop: backdrop,
     adjust: adjust ?? this.adjust,
+    seam: seam,
   );
 
   /// أماكن شارات قبل/بعد (حتى اسم الطبيب ما يركب عليها).
@@ -732,7 +746,11 @@ void paintDesign(Canvas canvas, DesignSpec s) {
       final fill = s.fills[i];
       final p = s.photos[fill.which];
       if (p == null) continue;
-      final filter = s.adjust[fill.which]?.filter;
+      final m = s.masks != null && i < s.masks!.length ? s.masks![i] : null;
+      final adj = s.adjust[fill.which] ?? PhotoAdjust.none;
+      final filter = (m?.mono ?? false)
+          ? adj.copyWith(saturation: -1).filter
+          : adj.filter;
       void draw(Canvas c) => paintPhoto(
         c,
         s.slots[i],
@@ -742,7 +760,6 @@ void paintDesign(Canvas canvas, DesignSpec s) {
         filter: filter,
         backing: s.masks == null,
       );
-      final m = s.masks != null && i < s.masks!.length ? s.masks![i] : null;
       if (m == null) {
         draw(c);
       } else {
@@ -753,6 +770,7 @@ void paintDesign(Canvas canvas, DesignSpec s) {
 
   if (s.backdrop) _paintBackdrop(canvas, s);
   photos(canvas);
+  if (s.seam != null) _paintSeam(canvas, s);
 
   if (s.marks.isNotEmpty) {
     canvas.saveLayer(full, Paint());
@@ -795,6 +813,41 @@ void paintDesign(Canvas canvas, DesignSpec s) {
     }
   }
   paintElements(canvas, s.size, s.elements);
+}
+
+/// خط رفيع على حد الدمج، مقصوص على الشباك.
+void _paintSeam(Canvas canvas, DesignSpec s) {
+  final masks = s.masks;
+  if (masks == null) return;
+  for (var i = 0; i < masks.length && i < s.slots.length; i++) {
+    final cell = s.slots[i];
+    final line = masks[i]?.seamIn(cell);
+    if (line == null) continue;
+    final (p, d) = line;
+    final n = d / d.distance * (cell.longestSide * 1.5);
+    final a = p - n, b = p + n;
+    final inner = cell.deflate((masks[i]!.feather * 2.5).clamp(0, 400));
+    canvas.save();
+    canvas.clipRect(inner);
+    final w = s.size.width * 0.003;
+    canvas.drawLine(
+      a,
+      b,
+      Paint()
+        ..color = s.seam!.withValues(alpha: 0.35)
+        ..strokeWidth = w * 5
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 3),
+    );
+    canvas.drawLine(
+      a,
+      b,
+      Paint()
+        ..color = s.seam!
+        ..strokeWidth = w,
+    );
+    canvas.restore();
+    return;
+  }
 }
 
 /// صورة "بعد" مضببة ومعتّمة شوية تملأ التصميم (خلفية القوالب الفخمة).

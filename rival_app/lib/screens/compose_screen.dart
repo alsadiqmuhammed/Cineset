@@ -48,6 +48,30 @@ class _ComposeScreenState extends State<ComposeScreen> {
   PostFormat? _formatFilter;
   int? _photosFilter;
   bool _edgelessOnly = false;
+
+  /// تحريك خط الدمج: مكانه، عرض الذوبان، واتجاهه.
+  double _fadeShift = 0;
+  double? _fadeWidth;
+  FadeDir? _fadeDir;
+
+  List<SlotMask?>? get _masks {
+    final m = _template?.masks;
+    if (m == null) return null;
+    final dir = _template!.sameFrame ? _fadeDir : null;
+    return [
+      for (final x in m)
+        x?.moved(shift: _fadeShift, width: _fadeWidth, dir: dir),
+    ];
+  }
+
+  /// عرض الذوبان الأصلي بالقالب (حتى السلايدر يبدي منه).
+  double get _baseWidth {
+    for (final x in _template?.masks ?? const <SlotMask?>[]) {
+      if (x != null && x.fades) return x.fadeEnd - x.fadeStart;
+    }
+    return 0.2;
+  }
+
   PostFormat _format = PostFormat.portrait;
   Layout _layout = Layout.sideBySide;
   Which _single = Which.after;
@@ -135,6 +159,9 @@ class _ComposeScreenState extends State<ComposeScreen> {
 
   Future<void> _applyTemplate(DesignTemplate? t) async {
     _template = t;
+    _fadeShift = 0;
+    _fadeWidth = null;
+    _fadeDir = null;
     _templateImg = t == null ? null : await loadAssetImage(t.asset);
     if (t != null) _labels = t.photos == 2 && !t.bakedLabels;
     _layoutChanged();
@@ -197,7 +224,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
       labelsAtBottom: templated || _brandFrame,
       marks: _c.marks,
       elements: _c.elements,
-      masks: _template?.masks,
+      masks: _masks,
       labelAligns: _template?.labelAligns,
       background: _template?.background,
       backdrop: _template?.backdrop ?? false,
@@ -224,6 +251,101 @@ class _ComposeScreenState extends State<ComposeScreen> {
     _c.fills[0].which = _c.fills[1].which;
     _c.fills[1].which = a;
     _fit();
+  }
+
+  Widget _blendPanel(Brand b) {
+    final t = _template!;
+    final width = _fadeWidth ?? _baseWidth;
+    Widget row(String label, IconData icon, Widget slider) => Row(
+      children: [
+        Icon(icon, size: 18, color: b.muted),
+        const SizedBox(width: 6),
+        SizedBox(
+          width: 70,
+          child: Text(label, style: const TextStyle(fontSize: 12.5)),
+        ),
+        Expanded(child: slider),
+      ],
+    );
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+      decoration: BoxDecoration(
+        color: b.glass,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: b.glassEdge),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.gradient, color: b.primary),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'الدمج والشفافية',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              TextButton(
+                onPressed:
+                    _fadeShift == 0 && _fadeWidth == null && _fadeDir == null
+                    ? null
+                    : () => setState(() {
+                        _fadeShift = 0;
+                        _fadeWidth = null;
+                        _fadeDir = null;
+                      }),
+                child: const Text('إرجاع'),
+              ),
+            ],
+          ),
+          if (t.sameFrame)
+            Wrap(
+              spacing: 6,
+              children: [
+                for (final d in FadeDir.values)
+                  ChoiceChip(
+                    label: Text(d.label),
+                    selected: (_fadeDir ?? _templateDir(t)) == d,
+                    onSelected: (_) => setState(() => _fadeDir = d),
+                  ),
+              ],
+            ),
+          row(
+            'مكان الخط',
+            Icons.swap_horiz,
+            Slider(
+              value: _fadeShift,
+              min: -0.45,
+              max: 0.45,
+              onChanged: (v) => setState(() => _fadeShift = v),
+            ),
+          ),
+          row(
+            'النعومة',
+            Icons.blur_linear,
+            Slider(
+              value: width.clamp(0.004, 0.9),
+              min: 0.004,
+              max: 0.9,
+              onChanged: (v) => setState(() => _fadeWidth = v),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// اتجاه القالب الأصلي (حتى يبين محدد).
+  FadeDir? _templateDir(DesignTemplate t) {
+    for (final m in t.masks ?? const <SlotMask?>[]) {
+      if (m == null || !m.fades) continue;
+      for (final d in FadeDir.values) {
+        if (d.ends == (m.fadeFrom, m.fadeTo)) return d;
+      }
+    }
+    return null;
   }
 
   @override
@@ -414,6 +536,10 @@ class _ComposeScreenState extends State<ComposeScreen> {
                       ),
                   ],
                 ),
+                if (_template?.blends ?? false) ...[
+                  const SizedBox(height: 12),
+                  _blendPanel(b),
+                ],
                 const SizedBox(height: 14),
                 AdjustPanel(
                   controller: _c,

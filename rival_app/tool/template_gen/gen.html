@@ -19,6 +19,7 @@ function path(ctx,s,x,y,w,h){ // s: {shape, radius}
   else if(s.shape==='arch'){const r=w/2;ctx.beginPath();ctx.moveTo(x,y+h);ctx.lineTo(x,y+r);ctx.arc(x+r,y+r,r,Math.PI,0);ctx.lineTo(x+w,y+h);ctx.closePath();}
   else{ctx.beginPath();ctx.roundRect(x,y,w,h,s.radius||0);}
 }
+function softCut(ctx,x,y,w,h,b){ctx.save();ctx.globalCompositeOperation='destination-out';ctx.filter=`blur(${b}px)`;ctx.fillStyle='#000';ctx.fillRect(x+b,y+b,w-2*b,h-2*b);ctx.restore();}
 function cut(ctx,fn){ctx.save();ctx.globalCompositeOperation='destination-out';ctx.fillStyle='#000';fn();ctx.fill();ctx.restore();}
 function star(ctx,cx,cy,r,col){const k=r*0.22;ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(cx,cy-r);ctx.quadraticCurveTo(cx+k,cy-k,cx+r,cy);ctx.quadraticCurveTo(cx+k,cy+k,cx,cy+r);ctx.quadraticCurveTo(cx-k,cy+k,cx-r,cy);ctx.quadraticCurveTo(cx-k,cy-k,cx,cy-r);ctx.fill();}
 function text(ctx,t,x,y,font,col,align='center'){ctx.font=font;ctx.fillStyle=col;ctx.textAlign=align;ctx.direction='rtl';ctx.textBaseline='middle';ctx.fillText(t,x,y);}
@@ -40,8 +41,8 @@ const PAL={
   D:{name:'نبيذي',dark:true,bg:'#2A0710',paper:'#3D0E1A',ink:'#F6EEE8',muted:'#E3CBD0',accent:'#E8A0AE',accent2:'#9C3D4E',gold:'#DBB686',glowA:'#DBB686',glowB:'#9C3D4E',logo:'beauty_reversed.png',stack:'beauty_reversed.png',sym:'beauty_symbol_reversed.png',horiz:false}}
 };
 const TXT={
- dental:{brand:'عيادة ريڤال',latin:'RIVAL CLINIC',tags:['ابتسامة جديدة','الفرق واضح','نتيجة حقيقية','ابتسامتك تبدأ من هنا','ابتسامة تليق بيك'],treat:'فينير · تبييض · زراعة · تقويم',shape:'tooth'},
- beauty:{brand:'ريڤال بيوتي',latin:'RIVAL BEAUTY',tags:['جمال طبيعي','نتيجة حقيقية','لمسة أنعم','إشراقة جديدة','لأن الجمال تفاصيل'],treat:'فيلر · بوتوكس · نضارة البشرة',shape:'drop'}
+ dental:{brand:'عيادة ريڤال',latin:'RIVAL CLINIC',tags:['ابتسامة جديدة','الفرق واضح','نتيجة حقيقية','ابتسامتك تبدأ من هنا','ابتسامة تليق بيك'],shape:'tooth'},
+ beauty:{brand:'ريڤال بيوتي',latin:'RIVAL BEAUTY',tags:['جمال طبيعي','نتيجة حقيقية','لمسة أنعم','إشراقة جديدة','لأن الجمال تفاصيل'],shape:'drop'}
 };
 async function brandLogo(ctx,g,cx,y,h){const p=g.p;return logo(ctx,p.horiz?p.logo:p.stack,cx,y,p.horiz?h:h*2.2);}
 function logoH(g,h){return g.p.horiz?h:h*2.2;}
@@ -109,7 +110,7 @@ F.mist={name:'ضباب',async draw(ctx,g){const {W,H,p,t}=g;
   const y=bot+(H-bot)/2;
   text(ctx,'قبل',W*0.73,bot-50,'58px Ruqaa',p.dark?p.ink:'#FFFFFF');text(ctx,'بعد',W*0.27,bot-50,'58px Ruqaa','#FFFFFF');
   text(ctx,t.tags[(g.v+3)%5],W/2,y-16,'800 40px Almarai',p.ink);
-  text(ctx,t.treat,W/2,y+40,'400 26px Almarai',p.muted);
+  latin(ctx,t.latin,W/2,y+40,'800 20px Almarai',p.gold,'7px');
   return {slots:[[W*0.47,top,W*0.53,bot-top],[0,top,W*0.53,bot-top]],masks:[{feather:26},{feather:26,fadeFrom:[1,0],fadeTo:[0.7,0],fadeStart:0,fadeEnd:1}],baked:true,background:true};
 }};
 // ٥ هالة: صورة وحدة تذوب بالخلفية
@@ -152,11 +153,11 @@ F.polaroid={name:'بولارويد',async draw(ctx,g){const {W,H,p,t}=g;
   else{const x=W-cards[0].w-70-60;
     await brandLogo(ctx,g,x/2+30,story?260:150,46);
     const ty=story?560:400;
-    for(const [k,[a,b]] of [['الحالة',t.brand],['العلاج',(a=>a[g.v%a.length])(t.treat.split(' · '))],['النتيجة',t.tags[g.v%5]]].entries()){
-      latin(ctx,'',0,0,'',p.ink);
-      text(ctx,a,x/2+30,ty+k*(story?300:230),'800 24px Almarai',p.gold);
-      text(ctx,b,x/2+30,ty+k*(story?300:230)+60,'52px Ruqaa',p.ink);
-    }}
+    for(const [k,[a,b]] of [['العيادة',t.brand],['النتيجة',t.tags[g.v%5]]].entries()){
+      text(ctx,a,x/2+30,ty+k*(story?360:280),'800 24px Almarai',p.gold);
+      text(ctx,b,x/2+30,ty+k*(story?360:280)+64,'52px Ruqaa',p.ink);
+    }
+    star(ctx,x/2+30,ty+(story?720:560),16,p.gold);}
   return {slots,masks:null,baked:true};
 }};
 // ٧ كروت مايلة بظل كرت ثاني
@@ -301,10 +302,125 @@ F.script={name:'سكربت',async draw(ctx,g){const {W,H,p,t}=g;
   const sym=await img(p.dark||true?(g.sec==='dental'?'logo_reversed.png':'beauty_reversed.png'):p.stack);
   const lh=sq?110:140,lw=sym.width*lh/sym.height;ctx.drawImage(sym,lx-lw/2,story?60:40,lw,lh);
   if(story){text(ctx,t.tags[(g.v+2)%5],W/2,H-150,'800 40px Almarai','#F4F1EC');}
-  else text(ctx,t.treat.split(' · ')[g.v%3],lx,H-80,'400 26px Almarai','#CFC4B8');
+  else latin(ctx,TXT[g.sec].latin,lx,H-80,'800 18px Almarai','#CFC4B8','5px');
   return {slots:[s0,s1],masks:null,baked:true};
 }};
 
+
+// ١٤ شق: نفس الوجه بخط فاصل، إطارات جانبية، وشريط تحت
+F.split={name:'شق',async draw(ctx,g){const {W,H,p,t}=g;
+  ctx.fillStyle=p.bg;ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle=p.dark?'rgba(255,255,255,0.05)':'rgba(60,40,30,0.06)';ctx.lineWidth=2;
+  for(let x=-200;x<W+200;x+=135){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x+120,H);ctx.stroke();}
+  for(let y=40;y<H;y+=135){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y-60);ctx.stroke();}
+  glow(ctx,W,0,W*0.8,p.glowA,p.dark?0.15:0.35);
+  const story=g.fmt==='story',sq=g.fmt==='square';
+  const top=sq?250:story?520:340,bot=sq?H-170:story?H-330:H-220;
+  const ph={x:150,y:top,w:W-300,h:bot-top};
+  softCut(ctx,ph.x,ph.y,ph.w,ph.h,40);
+  // الصورة تذوب بالخلفية من كل الجهات (القناع بالرسم) وهنا بس نعيد الخلفية برّه
+  await brandLogo(ctx,g,story?220:200,story?110:50,42);
+  latin(ctx,g.sec==='dental'?'SMILE · CARE':'BEAUTY · CARE',W-70,story?140:76,'800 18px Almarai',p.muted,'4px','right');
+  text(ctx,t.tags[g.v%5],W/2,top-(sq?110:story?190:140),`800 ${sq?72:86}px Almarai`,p.ink);
+  text(ctx,t.brand,W/2,top-(sq?50:story?110:66),'400 28px Almarai',p.muted);
+  const by=ph.y+ph.h*0.42,bh=ph.h*0.34;
+  ctx.strokeStyle=p.ink;ctx.lineWidth=2.5;
+  ctx.strokeRect(W*0.6,by,W*0.3,bh);ctx.strokeRect(W*0.1,by,W*0.3,bh);
+  ctx.fillStyle=p.bg;ctx.fillRect(W*0.9-40,by+bh/2-30,80,60);ctx.fillRect(W*0.1-40,by+bh/2-30,80,60);
+  text(ctx,'قبل',W*0.9,by+bh/2,'800 30px Almarai',p.ink);text(ctx,'بعد',W*0.1,by+bh/2,'800 30px Almarai',p.ink);
+  const py=H-(sq?120:story?250:150);
+  const gr=ctx.createLinearGradient(140,0,W-140,0);gr.addColorStop(0,p.dark?'#3A302C':'#2A2526');gr.addColorStop(1,'#0E0C0C');
+  ctx.fillStyle=gr;ctx.beginPath();ctx.roundRect(140,py-58,W-280,116,16);ctx.fill();
+  ctx.fillStyle=p.accent2;ctx.beginPath();ctx.arc(150,py-56,26,0,7);ctx.fill();
+  const lg=await img(g.sec==='dental'?'logo_reversed.png':'beauty_reversed.png');const lh=86,lw=lg.width*lh/lg.height;ctx.drawImage(lg,W-140-30-lw,py-lh/2,lw,lh);
+  text(ctx,t.tags[(g.v+2)%5],W/2-40,py,'52px Ruqaa','#FFFFFF');
+  const r=[ph.x,ph.y,ph.w,ph.h];
+  return {slots:[r,r],masks:[{feather:22},{feather:22,fadeFrom:[1,0],fadeTo:[-1,0],fadeStart:0.497,fadeEnd:0.503}],seam:'#FFFFFF',baked:true,background:true};
+}};
+// ١٥ ذهبي: شق ناعم ونجوم ذهبية
+F.gold={name:'ذهبي',async draw(ctx,g){const {W,H,p,t}=g;
+  ctx.fillStyle=p.dark?p.bg:'#F3F1EE';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle=p.dark?'rgba(219,182,134,0.08)':'rgba(0,0,0,0.035)';ctx.lineWidth=140;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(W*0.85,-100);ctx.bezierCurveTo(W*1.2,H*0.4,W*0.1,H*0.3,W*0.3,H*1.1);ctx.stroke();
+  const story=g.fmt==='story',sq=g.fmt==='square';
+  const top=sq?230:story?500:300,bot=H-(sq?40:story?200:60);
+  const ph={x:110,y:top,w:W-220,h:bot-top};
+  softCut(ctx,ph.x,ph.y,ph.w,ph.h,46);
+  text(ctx,t.tags[(g.v+1)%5],W/2,top-(sq?120:story?220:150),`${sq?80:96}px Ruqaa`,p.dark?p.gold:'#5B3A26');
+  text(ctx,t.brand,W/2,top-(sq?50:story?120:70),'400 30px Almarai',p.muted);
+  for(const [x,y,r] of [[W*0.18,top+ph.h*0.32,46],[W*0.84,top+ph.h*0.08,30],[W*0.85,top+ph.h*0.62,40]]){star(ctx,x,y,r,p.gold);}
+  text(ctx,'قبل',W*0.76,top+40,'52px Ruqaa',p.gold);text(ctx,'بعد',W*0.24,top+40,'52px Ruqaa',p.gold);
+  const sym=await img(p.sym);const sh=70,sw=sym.width*sh/sym.height;ctx.drawImage(sym,90,H-(story?190:sq?130:150),sw,sh);
+  latin(ctx,TXT[g.sec].latin,90+sw/2,H-(story?100:sq?40:60),'800 16px Almarai',p.dark?p.ink:'#5B3A26','4px');
+  const gb=ctx.createLinearGradient(0,0,W,0);gb.addColorStop(0,'#B8894C');gb.addColorStop(0.5,'#F1D39B');gb.addColorStop(1,'#B8894C');ctx.fillStyle=gb;ctx.fillRect(0,H-14,W,14);
+  const r=[ph.x,ph.y,ph.w,ph.h];
+  return {slots:[r,r],masks:[{feather:34},{feather:34,fadeFrom:[1,0],fadeTo:[-1,0],fadeStart:0.485,fadeEnd:0.515}],seam:'#FFFFFF',baked:true,background:true};
+}};
+// ١٦ أبيض وأسود: قبل خلفية رمادية، بعد ملوّنة بالنص
+F.mono={name:'أبيض وأسود',async draw(ctx,g){const {W,H,p,t}=g;
+  ctx.clearRect(0,0,W,H);
+  const story=g.fmt==='story',sq=g.fmt==='square';
+  const shade=p.dark?'#000000':'#FFFFFF',ink=p.dark?'#FFFFFF':p.ink;
+  vgrad(ctx,H,H*(sq?0.62:0.6),shade,p.dark?0.82:0.9,0);vgrad(ctx,0,H*0.16,shade,p.dark?0.5:0.6,0);
+  const iw=sq?380:story?520:470,ih=sq?470:story?720:580;const ix=(W-iw)/2,iy=sq?190:story?400:250;
+  ctx.strokeStyle='rgba(255,255,255,0.9)';ctx.lineWidth=3;ctx.beginPath();ctx.roundRect(ix-14,iy-14,iw+28,ih+28,30);ctx.stroke();
+  // شارة أعلى
+  ctx.font='800 26px Almarai';const bw=ctx.measureText(t.brand).width+90;
+  ctx.strokeStyle=ink;ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(W-70-bw,(story?150:50),bw,54,27);ctx.stroke();
+  text(ctx,t.brand,W-70-bw/2+18,(story?150:50)+28,'800 26px Almarai',ink);ctx.fillStyle=ink;ctx.beginPath();ctx.arc(W-70-bw+30,(story?150:50)+27,13,0,7);ctx.fill();
+  latin(ctx,'‹‹‹',110,(story?150:50)+26,'800 34px Almarai',ink,'2px');
+  pill(ctx,'قبل',W-70,iy+ih*0.15,'rgba(35,31,32,0.7)','#FFFFFF','right');
+  pill(ctx,'بعد',ix+iw-24,iy+ih-40,p.accent,'#FFFFFF','right');
+  const ty=iy+ih+(H-iy-ih)/2;
+  text(ctx,t.tags[(g.v+3)%5],W/2,ty-24,`800 ${sq?52:60}px Almarai`,ink);
+  latin(ctx,TXT[g.sec].latin,W/2,ty+40,'800 20px Almarai',p.dark?'#DBB686':p.accent,'8px');
+  return {slots:[[0,0,W,H],[ix,iy,iw,ih]],masks:[{mono:true},{radius:18}],baked:true};
+}};
+// ١٧ تبويب: كرتين بشارات مايلة فوقهن
+F.tabs={name:'تبويب',async draw(ctx,g){const {W,H,p,t}=g;
+  bgFill(ctx,W,H,p);
+  ctx.strokeStyle=p.dark?'rgba(255,255,255,0.06)':'rgba(40,30,30,0.07)';ctx.lineWidth=1.5;
+  const pts=[];for(let i=0;i<26;i++)pts.push([(i*397)%W,(i*263)%H]);
+  for(const a of pts)for(const b of pts){const d=Math.hypot(a[0]-b[0],a[1]-b[1]);if(d>0&&d<300){ctx.beginPath();ctx.moveTo(...a);ctx.lineTo(...b);ctx.stroke();}}
+  for(const a of pts){ctx.fillStyle=p.dark?'rgba(255,255,255,0.12)':'rgba(40,30,30,0.12)';ctx.beginPath();ctx.arc(...a,4,0,7);ctx.fill();}
+  const story=g.fmt==='story',sq=g.fmt==='square';
+  const cw=455,ch=sq?560:story?860:680,cy=sq?190:story?420:250;
+  const r=[W-60-cw,cy,cw,ch],l=[60,cy,cw,ch];
+  for(const [i,c] of [r,l].entries()){
+    shadowFill(ctx,()=>{ctx.beginPath();ctx.roundRect(c[0]-10,c[1]-10,c[2]+20,c[3]+20,46);},'rgba(40,20,20,0.25)',40,16,'#FFFFFF');
+    cut(ctx,()=>{ctx.beginPath();ctx.roundRect(...c,38);});
+    // شارة مايلة
+    const tw=230,th=64,tx=c[0]+c[2]/2-tw/2,ty=c[1]-th+6;
+    ctx.fillStyle='#FFFFFF';ctx.beginPath();ctx.moveTo(tx+26,ty);ctx.lineTo(tx+tw-26,ty);ctx.lineTo(tx+tw,ty+th);ctx.lineTo(tx,ty+th);ctx.closePath();ctx.fill();
+    text(ctx,i===0?'قبل':'بعد',tx+tw/2,ty+th/2+4,'48px Ruqaa',p.accent2);
+  }
+  await brandLogo(ctx,g,W/2,story?150:sq?28:40,sq?44:50);
+  const by=cy+ch+(H-cy-ch)/2;
+  text(ctx,'قبل وبعد',W/2,by-30,`${sq?70:96}px Ruqaa`,p.dark?p.ink:p.accent2);
+  ctx.fillStyle=p.dark?p.accent2:p.accent2;ctx.beginPath();ctx.roundRect(W/2-250,by+28,500,62,31);ctx.fill();
+  text(ctx,t.tags[(g.v+4)%5],W/2,by+60,'800 28px Almarai','#FFFFFF');
+  return {slots:[r,l],masks:[{radius:38},{radius:38}],baked:true,background:true};
+}};
+// ١٨ بانوراما: بعد كبيرة تذوب فوق لوح زجاجي بيه قبل
+F.pano={name:'بانوراما',async draw(ctx,g){const {W,H,p,t}=g;
+  ctx.clearRect(0,0,W,H);
+  const story=g.fmt==='story',sq=g.fmt==='square';
+  const head=sq?170:story?380:230;
+  ctx.fillStyle=p.bg;ctx.fillRect(0,0,W,head);vgrad(ctx,head,head+60,p.bg,1,0);
+  text(ctx,t.tags[g.v%5],W/2,head*0.42,`${sq?64:84}px Ruqaa`,p.dark?p.ink:p.accent2);
+  text(ctx,t.brand,W/2,head*0.42+(sq?56:70),'800 26px Almarai',p.gold);
+  const panel={x:W*0.46,y:head+30,w:W*0.54-50,h:sq?420:story?760:560};
+  const after={x:40,y:head+(sq?60:90),w:W*0.62,h:H-head-(sq?150:story?300:200)};
+  // لمعة زجاج على اللوح
+  ctx.strokeStyle='rgba(255,255,255,0.95)';ctx.lineWidth=3;ctx.beginPath();ctx.roundRect(panel.x,panel.y,panel.w,panel.h,30);ctx.stroke();
+  const sh=ctx.createLinearGradient(panel.x,panel.y,panel.x+panel.w,panel.y+panel.h);sh.addColorStop(0,'rgba(255,255,255,0.28)');sh.addColorStop(0.35,'rgba(255,255,255,0)');ctx.fillStyle=sh;ctx.beginPath();ctx.roundRect(panel.x,panel.y,panel.w,panel.h,30);ctx.fill();
+  pill(ctx,'قبل',panel.x+panel.w-24,panel.y+50,'rgba(35,31,32,0.7)','#FFFFFF','right');
+  // كبسولات زجاج تحت
+  const py=H-(sq?80:story?200:110);
+  for(const [k,x] of [W*0.2,W*0.5,W*0.8].entries()){ctx.fillStyle=p.dark?'rgba(255,255,255,0.08)':'rgba(255,255,255,0.7)';ctx.strokeStyle=p.dark?'rgba(255,255,255,0.25)':'rgba(255,255,255,1)';ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(x-140,py-40,280,80,40);ctx.fill();ctx.stroke();
+    if(k===1){const sy=await img(p.sym);const s2=50,w2=sy.width*s2/sy.height;ctx.drawImage(sy,x-w2/2,py-s2/2,w2,s2);}else{star(ctx,x-50,py,14,p.gold);text(ctx,k===0?'بعد':'قبل',x+16,py+2,'800 30px Almarai',p.dark?p.ink:p.ink);}}
+  return {slots:[[panel.x,panel.y,panel.w,panel.h],[after.x,after.y,after.w,after.h]],masks:[{radius:30},{feather:30,fadeFrom:[0,1],fadeTo:[0,0.2],fadeStart:0,fadeEnd:0.5}],baked:true,background:true};
+}};
 window.FAMS=Object.keys(F);
 window.render=async function(sec,fam,pal,fmt,v){
   await document.fonts.load('800 20px Almarai');await document.fonts.load('400 20px Almarai');await document.fonts.load('20px Ruqaa');
