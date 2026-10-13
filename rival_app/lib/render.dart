@@ -174,7 +174,15 @@ double coverZoom(Rect cell, Size image, Photo p, Framing f) {
   return zoom;
 }
 
-void paintPhoto(Canvas canvas, Rect cell, ui.Image img, Photo p, Framing f) {
+void paintPhoto(
+  Canvas canvas,
+  Rect cell,
+  ui.Image img,
+  Photo p,
+  Framing f, {
+  ColorFilter? filter,
+  bool backing = true,
+}) {
   final m = CellMapping.of(
     cell,
     Size(img.width.toDouble(), img.height.toDouble()),
@@ -183,7 +191,11 @@ void paintPhoto(Canvas canvas, Rect cell, ui.Image img, Photo p, Framing f) {
   );
   canvas.save();
   canvas.clipRect(cell);
-  canvas.drawRect(cell, Paint()..color = const Color(0xFF0B0C0D));
+  // الخلفية السودة للصور اللي ما تغطي الشباك؛ بالأقنعة الناعمة تنطفي
+  // حتى ما تبين ظلمة بالحواف.
+  if (backing) {
+    canvas.drawRect(cell, Paint()..color = const Color(0xFF0B0C0D));
+  }
   canvas.translate(m.target.dx, m.target.dy);
   canvas.rotate(m.angle);
   canvas.scale(m.scale);
@@ -191,7 +203,9 @@ void paintPhoto(Canvas canvas, Rect cell, ui.Image img, Photo p, Framing f) {
   canvas.drawImage(
     img,
     Offset.zero,
-    Paint()..filterQuality = FilterQuality.high,
+    Paint()
+      ..filterQuality = FilterQuality.high
+      ..colorFilter = filter,
   );
   canvas.restore();
 }

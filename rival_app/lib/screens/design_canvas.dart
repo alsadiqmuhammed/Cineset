@@ -92,6 +92,18 @@ class DesignController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// الإضاءة والألوان لكل صورة.
+  final Map<Which, PhotoAdjust> adjust = {};
+
+  void setAdjust(Which w, PhotoAdjust a) {
+    if (a.isNone) {
+      adjust.remove(w);
+    } else {
+      adjust[w] = a;
+    }
+    notifyListeners();
+  }
+
   void changed() => notifyListeners();
 }
 
@@ -119,7 +131,8 @@ class _DesignCanvasState extends State<DesignCanvas> {
   Offset _toDesign(Offset local) => local * _k;
 
   int _slotAt(DesignSpec s, Offset p) {
-    for (var i = 0; i < s.slots.length; i++) {
+    // الأخير يترسم فوق (دائرة فوق صورة كبيرة)، فهو أول من يتمسك.
+    for (var i = s.slots.length - 1; i >= 0; i--) {
       if (s.slots[i].contains(p)) return i;
     }
     var best = 0;

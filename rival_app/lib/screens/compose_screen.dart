@@ -9,6 +9,7 @@ import '../models.dart';
 import '../render.dart';
 import '../store.dart';
 import 'common.dart';
+import 'adjust_panel.dart';
 import 'design_canvas.dart';
 import 'design_controls.dart';
 import 'elements_bar.dart';
@@ -46,6 +47,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
   late DesignTemplate? _template = _templates.first;
   PostFormat? _formatFilter;
   int? _photosFilter;
+  bool _edgelessOnly = false;
   PostFormat _format = PostFormat.portrait;
   Layout _layout = Layout.sideBySide;
   Which _single = Which.after;
@@ -134,7 +136,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
   Future<void> _applyTemplate(DesignTemplate? t) async {
     _template = t;
     _templateImg = t == null ? null : await loadAssetImage(t.asset);
-    if (t != null) _labels = t.photos == 2;
+    if (t != null) _labels = t.photos == 2 && !t.bakedLabels;
     _layoutChanged();
     if (mounted) setState(() => _ready = true);
   }
@@ -195,6 +197,11 @@ class _ComposeScreenState extends State<ComposeScreen> {
       labelsAtBottom: templated || _brandFrame,
       marks: _c.marks,
       elements: _c.elements,
+      masks: _template?.masks,
+      labelAligns: _template?.labelAligns,
+      background: _template?.background,
+      backdrop: _template?.backdrop ?? false,
+      adjust: Map.of(_c.adjust),
     );
   }
 
@@ -225,7 +232,8 @@ class _ComposeScreenState extends State<ComposeScreen> {
     final templates = [
       for (final t in _templates)
         if ((_formatFilter == null || t.format == _formatFilter) &&
-            (_photosFilter == null || t.photos == _photosFilter))
+            (_photosFilter == null || t.photos == _photosFilter) &&
+            (!_edgelessOnly || t.edgeless))
           t,
     ];
     final spec = _spec();
@@ -309,14 +317,15 @@ class _ComposeScreenState extends State<ComposeScreen> {
                 ),
                 const SizedBox(height: 6),
                 SizedBox(
-                  height: 38,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
+                  width: double.infinity,
+                  child: Wrap(
+                    runSpacing: 4,
                     children: [
                       for (final (label, f) in const [
                         ('الكل', null),
                         ('بوست', PostFormat.portrait),
                         ('ستوري', PostFormat.story),
+                        ('مربع', PostFormat.square),
                       ])
                         Padding(
                           padding: const EdgeInsetsDirectional.only(end: 6),
@@ -327,8 +336,14 @@ class _ComposeScreenState extends State<ComposeScreen> {
                                 setState(() => _formatFilter = f),
                           ),
                         ),
+                      const SizedBox(width: 10),
+                      FilterChip(
+                        label: const Text('بدون حواف'),
+                        selected: _edgelessOnly,
+                        onSelected: (v) => setState(() => _edgelessOnly = v),
+                      ),
                       if (_hasBefore) ...[
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 6),
                         for (final (label, n) in const [
                           ('صورتين', 2),
                           ('صورة وحدة', 1),
@@ -398,6 +413,11 @@ class _ComposeScreenState extends State<ComposeScreen> {
                         onSelected: (v) => setState(() => _labels = v),
                       ),
                   ],
+                ),
+                const SizedBox(height: 14),
+                AdjustPanel(
+                  controller: _c,
+                  photos: {for (final e in _photos.entries) e.key: e.value.$1},
                 ),
                 if (_template == null) ...[
                   const SizedBox(height: 12),

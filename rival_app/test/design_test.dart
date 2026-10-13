@@ -41,7 +41,10 @@ void main() {
   test(
     'template windows match the transparent areas of every template',
     () async {
-      for (final t in [...dentalTemplates, ...beautyTemplates]) {
+      for (final t in [
+        ...templatesFor(Section.dental),
+        ...templatesFor(Section.beauty),
+      ]) {
         final data = await rootBundle.load(t.asset);
         final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
         final img = (await codec.getNextFrame()).image;
@@ -51,12 +54,18 @@ void main() {
           reason: t.id,
         );
         final px = await pixels(img);
-        for (final r in t.slots) {
+        // قوالب الدمج والخلفية المضببة: الصورة تبين من القالب الشفاف.
+        final open = t.edgeless || t.backdrop;
+        for (final (i, r) in t.slots.indexed) {
+          // الشباك اللي يترسم فوق شباك ثاني (دائرة العدسة) يبين من مركزه.
+          final mask = t.masks != null ? t.masks![i] : null;
           expect(
             at(px, img.width, r.center).a,
             lessThan(0.05),
             reason: '${t.id} window',
           );
+          // شباك لحافة التصميم (صورة لآخر الصفحة) ماكو تحته شي نفحصه.
+          if (open || mask != null || r.bottom + 12 >= img.height) continue;
           // خارج الشباك بشوي: القالب نفسه (مو شفاف).
           expect(
             at(px, img.width, Offset(r.center.dx, r.bottom + 12)).a,
@@ -65,7 +74,7 @@ void main() {
           );
         }
         // "قبل" (أول شباك) باليمين، أو فوق بالقوالب العمودية.
-        if (t.slots.length == 2) {
+        if (t.slots.length == 2 && t.slots[0] != t.slots[1]) {
           final (a, b) = (t.slots[0].center, t.slots[1].center);
           if (a.dx == b.dx) {
             expect(a.dy, lessThan(b.dy), reason: t.id);
@@ -386,7 +395,10 @@ void main() {
         }
       }
 
-      for (final t in [...dentalTemplates, ...beautyTemplates]) {
+      for (final t in [
+        ...templatesFor(Section.dental),
+        ...templatesFor(Section.beauty),
+      ]) {
         await check(
           t.id,
           t.format.size,

@@ -354,9 +354,17 @@ void main() {
       expect(born(DateTime(1990, 10, 9)).daysToBirthday(now), 0);
       expect(born(DateTime(1990, 10, 12)).daysToBirthday(now), 3);
       expect(born(DateTime(1990, 10, 8)).daysToBirthday(now), 364);
-      expect(born(DateTime(2000, 2, 29)).daysToBirthday(DateTime(2027, 2, 28)), 0);
+      expect(
+        born(DateTime(2000, 2, 29)).daysToBirthday(DateTime(2027, 2, 28)),
+        0,
+      );
       final p = born(DateTime(1990, 12, 31));
-      expect(p.age, DateTime.now().year - 1991 + (DateTime.now().month == 12 && DateTime.now().day == 31 ? 1 : 0));
+      expect(
+        p.age,
+        DateTime.now().year -
+            1991 +
+            (DateTime.now().month == 12 && DateTime.now().day == 31 ? 1 : 0),
+      );
       final restored = Patient.fromJson(p.toJson());
       expect(restored.birthDate, p.birthDate);
     });

@@ -6,9 +6,12 @@ import 'package:flutter/painting.dart';
 import 'brand.dart';
 import 'elements.dart';
 import 'models.dart';
+import 'photo_fx.dart';
 import 'render.dart';
+import 'templates_more.dart';
 
 export 'elements.dart';
+export 'photo_fx.dart';
 
 /// قوالب الهوية الجاهزة: صورة PNG شفافة بشبابيك تبين منها الصور.
 /// مكان كل شباك مقاس من شفافية القالب نفسه.
@@ -16,15 +19,40 @@ class DesignTemplate {
   final String id, label, asset;
   final PostFormat format;
   final List<Rect> slots;
+
+  /// أقنعة الشبابيك (حافة ناعمة، تدرّج، أشكال متداخلة). بدونها الصورة
+  /// تنقص على حدود الشباك وفتحة القالب تحدد شكلها.
+  final List<SlotMask?>? masks;
+
+  /// مكان شارة قبل/بعد بكل شباك (للشبابيك المتطابقة بقوالب الدمج).
+  final List<Alignment>? labelAligns;
+
+  /// لون تحت الصور (يبين من الحواف الناعمة).
+  final Color? background;
+
+  /// صورة "بعد" مضببة تملأ الخلفية كلها.
+  final bool backdrop;
+
+  /// القالب بيه كلمة قبل/بعد مرسومة، فشارات التطبيق تنطفي تلقائياً.
+  final bool bakedLabels;
+
   const DesignTemplate(
     this.id,
     this.label,
     this.asset,
     this.format,
-    this.slots,
-  );
+    this.slots, {
+    this.masks,
+    this.labelAligns,
+    this.background,
+    this.backdrop = false,
+    this.bakedLabels = false,
+  });
 
   int get photos => slots.length;
+
+  /// بدون حواف: الصورة تذوب بالخلفية أو بالصورة الثانية.
+  bool get edgeless => masks?.any((m) => m?.soft ?? false) ?? false;
 }
 
 const _t = 'assets/templates';
@@ -483,8 +511,14 @@ const beautyTemplates = [
   ),
 ];
 
-List<DesignTemplate> templatesFor(Section s) =>
-    s == Section.dental ? dentalTemplates : beautyTemplates;
+/// كل قوالب القسم: الكلاسيكي الأول (الافتراضي)، بعده العائلات الجديدة،
+/// وبعدها باقي القوالب الأولى.
+List<DesignTemplate> templatesFor(Section s) {
+  final (base, more) = s == Section.dental
+      ? (dentalTemplates, dentalMore)
+      : (beautyTemplates, beautyMore);
+  return [base.first, ...more, ...base.skip(1)];
+}
 
 /// أي صورة بالشباك.
 enum Which {
@@ -551,6 +585,14 @@ class DesignSpec {
   /// نصوص وصور تتحرك فوق كل شي (اسم الطبيب، توقيع...).
   final List<DesignElement> elements;
 
+  final List<SlotMask?>? masks;
+  final List<Alignment>? labelAligns;
+  final Color? background;
+  final bool backdrop;
+
+  /// تعديل الإضاءة والألوان لكل صورة.
+  final Map<Which, PhotoAdjust> adjust;
+
   const DesignSpec({
     required this.brand,
     required this.size,
@@ -564,7 +606,39 @@ class DesignSpec {
     this.labelsAtBottom = false,
     this.marks = const [],
     this.elements = const [],
+    this.masks,
+    this.labelAligns,
+    this.background,
+    this.backdrop = false,
+    this.adjust = const {},
   });
+
+  /// القالب يجيب الأقنعة والخلفية ويّاه.
+  DesignSpec.templated({
+    required this.brand,
+    required DesignTemplate t,
+    required this.fills,
+    required this.photos,
+    required ui.Image this.template,
+    this.labels = true,
+    this.marks = const [],
+    this.elements = const [],
+    this.adjust = const {},
+  }) : size = t.format.size,
+       slots = t.slots,
+       overlay = null,
+       frame = null,
+       labelsAtBottom = true,
+       masks = t.masks,
+       labelAligns = t.labelAligns,
+       background = t.background,
+       backdrop = t.backdrop;
+
+  Alignment labelAlign(int i) => labelAligns != null && i < labelAligns!.length
+      ? labelAligns![i]
+      : labelsAtBottom
+      ? Alignment.bottomCenter
+      : Alignment.topCenter;
 
   DesignSpec copyWith({
     List<SlotFill>? fills,
@@ -574,6 +648,7 @@ class DesignSpec {
     bool? labels,
     List<Mark>? marks,
     List<DesignElement>? elements,
+    Map<Which, PhotoAdjust>? adjust,
   }) => DesignSpec(
     brand: brand,
     size: size,
@@ -587,6 +662,11 @@ class DesignSpec {
     labelsAtBottom: labelsAtBottom,
     marks: marks ?? this.marks,
     elements: elements ?? this.elements,
+    masks: masks,
+    labelAligns: labelAligns,
+    background: background,
+    backdrop: backdrop,
+    adjust: adjust ?? this.adjust,
   );
 
   /// أماكن شارات قبل/بعد (حتى اسم الطبيب ما يركب عليها).
@@ -597,7 +677,7 @@ class DesignSpec {
           labelsAtBottom ? slots[i].deflate(size.width * 0.01) : slots[i],
           fills[i].which.label,
           size.width,
-          align: labelsAtBottom ? Alignment.bottomCenter : Alignment.topCenter,
+          align: labelAlign(i),
         ),
   ];
 }
@@ -642,7 +722,9 @@ void paintDesign(Canvas canvas, DesignSpec s) {
   final full = Offset.zero & s.size;
   canvas.drawRect(
     full,
-    Paint()..color = s.template == null ? s.brand.accent : s.brand.bg,
+    Paint()
+      ..color =
+          s.background ?? (s.template == null ? s.brand.accent : s.brand.bg),
   );
 
   void photos(Canvas c) {
@@ -650,10 +732,26 @@ void paintDesign(Canvas canvas, DesignSpec s) {
       final fill = s.fills[i];
       final p = s.photos[fill.which];
       if (p == null) continue;
-      paintPhoto(c, s.slots[i], p.$1, p.$2, fill.framing);
+      final filter = s.adjust[fill.which]?.filter;
+      void draw(Canvas c) => paintPhoto(
+        c,
+        s.slots[i],
+        p.$1,
+        p.$2,
+        fill.framing,
+        filter: filter,
+        backing: s.masks == null,
+      );
+      final m = s.masks != null && i < s.masks!.length ? s.masks![i] : null;
+      if (m == null) {
+        draw(c);
+      } else {
+        paintMasked(c, s.slots[i], m, draw);
+      }
     }
   }
 
+  if (s.backdrop) _paintBackdrop(canvas, s);
   photos(canvas);
 
   if (s.marks.isNotEmpty) {
@@ -692,11 +790,44 @@ void paintDesign(Canvas canvas, DesignSpec s) {
         s.size.width,
         bg: which == Which.after ? s.brand.primary : s.brand.dark,
         fg: const Color(0xFFFFFFFF),
-        align: templated ? Alignment.bottomCenter : Alignment.topCenter,
+        align: s.labelAlign(i),
       );
     }
   }
   paintElements(canvas, s.size, s.elements);
+}
+
+/// صورة "بعد" مضببة ومعتّمة شوية تملأ التصميم (خلفية القوالب الفخمة).
+void _paintBackdrop(Canvas canvas, DesignSpec s) {
+  final p = s.photos[Which.after] ?? s.photos[Which.before];
+  if (p == null) return;
+  final full = Offset.zero & s.size;
+  final sigma = s.size.width * 0.03;
+  canvas.save();
+  canvas.clipRect(full);
+  canvas.saveLayer(
+    full,
+    Paint()
+      ..imageFilter = ui.ImageFilter.blur(
+        sigmaX: sigma,
+        sigmaY: sigma,
+        tileMode: TileMode.clamp,
+      ),
+  );
+  final img = p.$1;
+  final src = Size(img.width.toDouble(), img.height.toDouble());
+  final fit = applyBoxFit(BoxFit.cover, src, s.size);
+  canvas.drawImageRect(
+    img,
+    Alignment.center.inscribe(fit.source, Offset.zero & src),
+    full,
+    Paint()
+      ..filterQuality = FilterQuality.medium
+      ..colorFilter = s.adjust[Which.after]?.filter,
+  );
+  canvas.restore();
+  canvas.drawRect(full, Paint()..color = const Color(0x33000000));
+  canvas.restore();
 }
 
 void _paintMark(

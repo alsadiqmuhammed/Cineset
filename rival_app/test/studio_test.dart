@@ -63,9 +63,9 @@ void main() {
       ),
     );
     await settle(tester, 12);
-    final singles = templatesFor(
-      Section.dental,
-    ).where((t) => t.photos == 1).length;
+    final singles = templatesFor(Section.dental)
+        .where((t) => t.photos == 1)
+        .length;
     expect(find.text('القالب · ${ar(singles)}'), findsOneWidget);
     expect(find.text('بدون قالب'), findsNothing);
     expect(find.text('صورتين'), findsNothing);
