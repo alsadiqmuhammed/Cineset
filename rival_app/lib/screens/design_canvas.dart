@@ -208,6 +208,7 @@ class _DesignCanvasState extends State<DesignCanvas> {
           offsetX: f0.offsetX + delta.dx / cell.width,
           offsetY: f0.offsetY + delta.dy / cell.height,
           rotation: f0.rotation + d.rotation,
+          flip: f0.flip,
         );
       }
       c.changed();

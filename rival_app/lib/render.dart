@@ -34,11 +34,15 @@ enum Layout {
 /// [offsetX] و[offsetY] نسبة من عرض/ارتفاع الخلية، و[rotation] بالراديان.
 class Framing {
   final double zoom, offsetX, offsetY, rotation;
+
+  /// قلب الصورة يمين ويسار (صور الكاميرا الأمامية أو المراية).
+  final bool flip;
   const Framing({
     this.zoom = 1,
     this.offsetX = 0,
     this.offsetY = 0,
     this.rotation = 0,
+    this.flip = false,
   });
 
   Framing copyWith({
@@ -46,11 +50,13 @@ class Framing {
     double? offsetX,
     double? offsetY,
     double? rotation,
+    bool? flip,
   }) => Framing(
     zoom: zoom ?? this.zoom,
     offsetX: offsetX ?? this.offsetX,
     offsetY: offsetY ?? this.offsetY,
     rotation: rotation ?? this.rotation,
+    flip: flip ?? this.flip,
   );
 }
 
@@ -115,7 +121,14 @@ Future<ui.Image> loadAssetImage(String asset) async {
 class CellMapping {
   final Offset target, mid;
   final double scale, angle;
-  const CellMapping(this.target, this.mid, this.scale, this.angle);
+  final bool flip;
+  const CellMapping(
+    this.target,
+    this.mid,
+    this.scale,
+    this.angle, [
+    this.flip = false,
+  ]);
 
   factory CellMapping.of(Rect cell, Size image, Photo p, Framing f) {
     final target = Offset(
@@ -128,6 +141,7 @@ class CellMapping {
         Offset(image.width / 2, image.height / 2),
         math.max(cell.width / image.width, cell.height / image.height) * f.zoom,
         f.rotation,
+        f.flip,
       );
     }
     final left = p.a!.dx <= p.b!.dx ? p.a! : p.b!;
@@ -138,11 +152,13 @@ class CellMapping {
       (left + right) / 2,
       cell.width * 0.42 * f.zoom / math.max(d.distance, 1.0),
       -math.atan2(d.dy, d.dx) + f.rotation,
+      f.flip,
     );
   }
 
   Offset map(Offset p) {
-    final v = (p - mid) * scale;
+    var v = (p - mid) * scale;
+    if (flip) v = Offset(-v.dx, v.dy);
     final c = math.cos(angle), s = math.sin(angle);
     return target + Offset(v.dx * c - v.dy * s, v.dx * s + v.dy * c);
   }
@@ -162,7 +178,8 @@ double coverZoom(Rect cell, Size image, Photo p, Framing f) {
   ]) {
     final d = corner - m.target;
     // موضع الزاوية بالصورة عند تقريب 1، نسبةً لنقطة المنتصف.
-    final v = Offset(d.dx * c - d.dy * s, d.dx * s + d.dy * c) / m.scale;
+    var v = Offset(d.dx * c - d.dy * s, d.dx * s + d.dy * c) / m.scale;
+    if (m.flip) v = Offset(-v.dx, v.dy);
     for (final (comp, mid, max) in [
       (v.dx, m.mid.dx, image.width),
       (v.dy, m.mid.dy, image.height),
@@ -198,7 +215,7 @@ void paintPhoto(
   }
   canvas.translate(m.target.dx, m.target.dy);
   canvas.rotate(m.angle);
-  canvas.scale(m.scale);
+  canvas.scale(m.flip ? -m.scale : m.scale, m.scale);
   canvas.translate(-m.mid.dx, -m.mid.dy);
   canvas.drawImage(
     img,

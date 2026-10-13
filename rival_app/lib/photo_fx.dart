@@ -311,6 +311,27 @@ class PhotoAdjust {
 
   ColorFilter? get filter => isNone ? null : ColorFilter.matrix(matrix);
 
+  Map<String, double> toJson() => {
+    if (brightness != 0) 'b': brightness,
+    if (contrast != 0) 'c': contrast,
+    if (saturation != 0) 's': saturation,
+    if (warmth != 0) 'w': warmth,
+    if (tint != 0) 't': tint,
+    if (fade != 0) 'f': fade,
+  };
+
+  factory PhotoAdjust.fromJson(Map<String, dynamic> j) {
+    double v(String k) => (j[k] as num?)?.toDouble() ?? 0;
+    return PhotoAdjust(
+      brightness: v('b'),
+      contrast: v('c'),
+      saturation: v('s'),
+      warmth: v('w'),
+      tint: v('t'),
+      fade: v('f'),
+    );
+  }
+
   static List<double> _identity() => [
     1, 0, 0, 0, 0, //
     0, 1, 0, 0, 0,

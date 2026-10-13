@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rival_clinic/brand.dart';
 import 'package:rival_clinic/design.dart';
 import 'package:rival_clinic/models.dart';
+import 'package:rival_clinic/render.dart';
 
 import 'design_test.dart' show solid, pixels, at;
 
@@ -230,6 +231,42 @@ void main() {
       expect(at(over, 400, const Offset(200, 200)).a, 0);
     },
   );
+
+  test('mirror flips the photo inside its window', () async {
+    // صورة نصها الأيسر أحمر والأيمن أزرق؛ بالمراية تنعكس.
+    final img = await solid(red, right: blue);
+    Future<ByteData> draw(bool flip) async {
+      final spec = DesignSpec(
+        brand: dental,
+        size: size,
+        slots: const [full],
+        fills: [SlotFill(Which.after, Framing(flip: flip))],
+        photos: {Which.after: (img, const Photo('a'))},
+        labels: false,
+      );
+      return pixels(await renderDesign(spec));
+    }
+
+    final normal = await draw(false), flipped = await draw(true);
+    expect(at(normal, 400, const Offset(50, 200)), red);
+    expect(at(flipped, 400, const Offset(50, 200)), blue);
+    final m = CellMapping.of(
+      full,
+      const Size(400, 400),
+      const Photo('a'),
+      const Framing(flip: true),
+    );
+    expect(m.map(const Offset(50, 200)).dx, closeTo(350, 0.5));
+  });
+
+  test('colour settings survive saving', () {
+    const a = PhotoAdjust(brightness: 0.2, warmth: -0.3, fade: 0.1);
+    final back = PhotoAdjust.fromJson(a.toJson());
+    expect(back.brightness, 0.2);
+    expect(back.warmth, -0.3);
+    expect(back.fade, 0.1);
+    expect(back.contrast, 0);
+  });
 
   test('blurred backdrop fills the design behind the photos', () async {
     final px = await draw(

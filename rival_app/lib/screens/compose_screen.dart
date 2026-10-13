@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:flutter/services.dart';
 
 import '../brand.dart';
@@ -16,6 +17,7 @@ import 'design_canvas.dart';
 import 'design_controls.dart';
 import 'elements_bar.dart';
 import 'present_screen.dart';
+import 'video_preview.dart';
 import 'studio_controls.dart';
 import '../video.dart';
 
@@ -28,10 +30,27 @@ class ComposeScreen extends StatefulWidget {
   final Photo after;
   final String? doctorId;
 
+  /// يرجع لآخر قالب وتعديل ألوان (حالات الستوديو السابقة).
+  final String? templateId;
+  final Map<Which, PhotoAdjust> adjust;
+  final Set<Which> flipped;
+
+  /// ينادى لما تطلع من الشاشة، حتى تنحفظ الحالة بقالبها وتعديلاتها.
+  final void Function(
+    String? templateId,
+    Map<Which, PhotoAdjust> adjust,
+    Set<Which> flipped,
+  )?
+  onLeave;
+
   ComposeScreen({super.key, this.patient, required CaseRecord record})
     : before = record.before,
       after = record.after!,
-      doctorId = record.doctorId;
+      doctorId = record.doctorId,
+      templateId = null,
+      adjust = const {},
+      flipped = const {},
+      onLeave = null;
 
   /// تصميم من صور مختارة مباشرة (تطبيق ريڤال ستوديو).
   const ComposeScreen.photos({
@@ -39,6 +58,10 @@ class ComposeScreen extends StatefulWidget {
     this.before,
     required this.after,
     this.doctorId,
+    this.templateId,
+    this.adjust = const {},
+    this.flipped = const {},
+    this.onLeave,
   }) : patient = null;
 
   @override
@@ -117,13 +140,21 @@ class _ComposeScreenState extends State<ComposeScreen> {
         return;
       }
       _logo = await loadAssetImage(_brand.logoReversed);
-      await _applyTemplate(_template);
+      _flipped.addAll(widget.flipped);
+      for (final e in widget.adjust.entries) {
+        if (_photos.containsKey(e.key)) _c.adjust[e.key] = e.value;
+      }
+      final saved = widget.templateId == null
+          ? null
+          : _templates.where((t) => t.id == widget.templateId).firstOrNull;
+      await _applyTemplate(saved ?? _template);
       _addDoctorName();
     }();
   }
 
   @override
   void dispose() {
+    widget.onLeave?.call(_template?.id, Map.of(_c.adjust), {..._flipped});
     _c.dispose();
     super.dispose();
   }
@@ -138,8 +169,122 @@ class _ComposeScreenState extends State<ComposeScreen> {
     return _layout == Layout.sideBySide ? [second, first] : [first, second];
   }
 
-  Framing get _base =>
-      Framing(offsetY: _brand.alignTarget == AlignTarget.eyes ? -0.1 : 0);
+  /// الصور المقلوبة (مراية).
+  final Set<Which> _flipped = {};
+
+  Framing _baseFor(Which w) => _base.copyWith(flip: _flipped.contains(w));
+
+  /// يلگى العيون بالصور (كشف الوجه على التلفون) ويغطيها بتضبيب، حتى
+  /// تنشر الحالة بدون ما ينعرف المراجع. التضبيب إضافة عادية تنمسح بالتراجع.
+  Future<void> _hideEyes() async {
+    final spec = _rawSpec();
+    if (spec == null) return;
+    final detector = FaceDetector(
+      options: FaceDetectorOptions(
+        enableLandmarks: true,
+        performanceMode: FaceDetectorMode.accurate,
+      ),
+    );
+    var found = 0;
+    try {
+      for (var i = 0; i < spec.slots.length && i < spec.fills.length; i++) {
+        final fill = spec.fills[i];
+        final p = _photos[fill.which];
+        if (p == null) continue;
+        final faces = await detector.processImage(
+          InputImage.fromFilePath(p.$2.path),
+        );
+        final img = p.$1;
+        final m = CellMapping.of(
+          spec.slots[i],
+          Size(img.width.toDouble(), img.height.toDouble()),
+          p.$2,
+          fill.framing,
+        );
+        for (final f in faces) {
+          final le = f.landmarks[FaceLandmarkType.leftEye]?.position;
+          final re = f.landmarks[FaceLandmarkType.rightEye]?.position;
+          final Rect eyes;
+          if (le != null && re != null) {
+            final a = Offset(le.x.toDouble(), le.y.toDouble());
+            final b = Offset(re.x.toDouble(), re.y.toDouble());
+            final d = (b - a).distance;
+            eyes = Rect.fromCenter(
+              center: (a + b) / 2,
+              width: d * 2.1,
+              height: d * 0.8,
+            );
+          } else {
+            final box = f.boundingBox;
+            eyes = Rect.fromLTWH(
+              box.left,
+              box.top + box.height * 0.22,
+              box.width,
+              box.height * 0.28,
+            );
+          }
+          final pts = [
+            eyes.topLeft,
+            eyes.topRight,
+            eyes.bottomLeft,
+            eyes.bottomRight,
+          ].map(m.map).toList();
+          var r = Rect.fromPoints(pts[0], pts[1]);
+          for (final q in pts) {
+            r = r.expandToInclude(
+              Rect.fromCenter(center: q, width: 0, height: 0),
+            );
+          }
+          r = r.intersect(spec.slots[i]);
+          if (r.isEmpty) continue;
+          _c.marks.add(
+            Mark(
+              MarkKind.blurRect,
+              [r.topLeft, r.bottomRight],
+              _c.color,
+              _c.width,
+            ),
+          );
+          found++;
+        }
+      }
+    } catch (_) {
+      // بدون كشف الوجه (جهاز ما يدعمه): نبلّغ تحت.
+    } finally {
+      detector.close();
+    }
+    _c.changed();
+    if (mounted) {
+      toast(
+        context,
+        found == 0
+            ? 'ما لگيت عيون بالصور. تكدر تضبب بإيدك من «أدوات».'
+            : 'انخفت العيون (${ar(found)})، والتراجع يرجعها',
+      );
+    }
+  }
+
+  void _toggleFlip(Which w) {
+    setState(() {
+      if (!_flipped.remove(w)) _flipped.add(w);
+      for (final f in _c.fills) {
+        if (f.which == w) {
+          f.framing = f.framing.copyWith(flip: _flipped.contains(w));
+        }
+      }
+    });
+    _c.changed();
+  }
+
+  /// الصور المعايرة بالعينين (من سجلات العيادة القديمة) ترتفع شوية؛
+  /// صور التجميل الجديدة بدون معايرة فتبقى بالنص.
+  Framing get _base => Framing(
+    offsetY:
+        _brand.alignTarget == AlignTarget.eyes &&
+            _photos.values.any((p) => p.$2.aligned)
+        ? -0.1
+        : 0,
+  );
 
   /// يرجّع الصور لوضعها التلقائي (تملأ الشبابيك ومتطابقة).
   void _fit() {
@@ -150,7 +295,9 @@ class _ComposeScreenState extends State<ComposeScreen> {
     for (var i = 0; i < slots.length; i++) {
       final which = old.length == slots.length ? old[i].which : whiches[i];
       final p = _photos[which]!;
-      fills.add(SlotFill(which, fitFraming(slots[i], p.$1, p.$2, _base)));
+      fills.add(
+        SlotFill(which, fitFraming(slots[i], p.$1, p.$2, _baseFor(which))),
+      );
     }
     // الصورتين بنفس التقريب حتى تبقى المطابقة.
     if (fills.length == 2) {
@@ -376,7 +523,10 @@ class _ComposeScreenState extends State<ComposeScreen> {
             final which = _c.fills[i].which;
             final p = _photos[which]!;
             fills.add(
-              SlotFill(which, fitFraming(x.slots[i], p.$1, p.$2, _base)),
+              SlotFill(
+                which,
+                fitFraming(x.slots[i], p.$1, p.$2, _baseFor(which)),
+              ),
             );
           }
           if (fills.length == 2) {
@@ -447,11 +597,15 @@ class _ComposeScreenState extends State<ComposeScreen> {
     (Icons.photo_outlined, 'الصور', 'photos'),
     (Icons.tune, 'الألوان', 'adjust'),
     if (_template?.blends ?? false) (Icons.gradient, 'الدمج', 'blend'),
+    (Icons.movie_creation_outlined, 'فيديو', 'video'),
     (Icons.brush_outlined, 'أدوات', 'tools'),
     (Icons.text_fields, 'نصوص', 'text'),
   ];
 
   void _openTab(int i) {
+    if (i < 0) return;
+    // المعاينة تشتغل بتبويب الفيديو بس.
+    if (_tabs[i].$3 != 'video') _previewing = false;
     // الخروج من الأدوات يرجّع التحريك حتى ما ترسم بالغلط.
     if (_tabs[_tab].$3 == 'tools' && i != _tab) _c.setTool(null);
     setState(() => _tab = i);
@@ -603,6 +757,18 @@ class _ComposeScreenState extends State<ComposeScreen> {
             label: const Text('ضبط تلقائي'),
             onPressed: _fit,
           ),
+          ActionChip(
+            avatar: const Icon(Icons.visibility_off_outlined, size: 18),
+            label: const Text('إخفاء العيون'),
+            onPressed: _hideEyes,
+          ),
+          for (final w in _photos.keys)
+            FilterChip(
+              avatar: const Icon(Icons.flip, size: 18),
+              label: Text(_photos.length == 2 ? 'مراية ${w.label}' : 'مراية'),
+              selected: _flipped.contains(w),
+              onSelected: (_) => _toggleFlip(w),
+            ),
         ],
       ),
       if (_slots.length == 2)
@@ -768,7 +934,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
                 subtitle: const Text('ذوبان، مسح، سلايدر، صعود، دائرة'),
                 onTap: () {
                   Navigator.pop(sheet);
-                  _videoSheet();
+                  _openTab(_tabs.indexWhere((t) => t.$3 == 'video'));
                 },
               ),
               if (siblings > 1)
@@ -790,153 +956,13 @@ class _ComposeScreenState extends State<ComposeScreen> {
     );
   }
 
-  /// يختار نمط الفيديو وسرعته ولون الخط، وبعدها يصنعه.
-  Future<void> _videoSheet() async {
-    var style = VideoStyle.slider;
-    var speed = 1;
-    final colors = [
-      const Color(0xFFFFFFFF),
-      const Color(0xFFDBB686),
-      _brand.primary,
-    ];
-    var color = _template?.seam ?? colors.first;
-    final go = await showModalBottomSheet<bool>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      backgroundColor: _brand.night.card,
-      builder: (sheet) => Theme(
-        data: _brand.night.theme(),
-        child: StatefulBuilder(
-          builder: (sheet, set) {
-            final b = sheet.brand;
-            return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'فيديو قبل وبعد',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: b.text,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: 104,
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        children: [
-                          for (final v in VideoStyle.values)
-                            GestureDetector(
-                              onTap: () => set(() => style = v),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 200),
-                                width: 92,
-                                margin: const EdgeInsetsDirectional.only(
-                                  end: 8,
-                                ),
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: style == v
-                                      ? b.primary.withValues(alpha: 0.16)
-                                      : b.glass,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: style == v ? b.primary : b.line,
-                                    width: style == v ? 2 : 1,
-                                  ),
-                                ),
-                                child: Column(
-                                  children: [
-                                    Expanded(child: VideoStyleIcon(style: v)),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      v.label,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 12.5,
-                                        color: b.text,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      style.hint,
-                      style: TextStyle(color: b.muted, fontSize: 12),
-                    ),
-                    const SizedBox(height: 12),
-                    SegmentedButton<int>(
-                      showSelectedIcon: false,
-                      segments: const [
-                        ButtonSegment(value: 0, label: Text('سريع')),
-                        ButtonSegment(value: 1, label: Text('عادي')),
-                        ButtonSegment(value: 2, label: Text('هادئ')),
-                      ],
-                      selected: {speed},
-                      onSelectionChanged: (v) => set(() => speed = v.first),
-                    ),
-                    if (style != VideoStyle.dissolve) ...[
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Text('لون الخط', style: TextStyle(color: b.muted)),
-                          const SizedBox(width: 12),
-                          for (final c in colors)
-                            GestureDetector(
-                              onTap: () => set(() => color = c),
-                              child: Container(
-                                width: 30,
-                                height: 30,
-                                margin: const EdgeInsetsDirectional.only(
-                                  end: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: c,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: color == c ? b.primary : b.line,
-                                    width: color == c ? 3 : 1,
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    FilledButton.icon(
-                      onPressed: () => Navigator.pop(sheet, true),
-                      icon: const Icon(Icons.movie_creation_outlined),
-                      label: const Text('اصنع الفيديو'),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-    if (go != true || !mounted) return;
-    await _makeVideo(style, speed, color);
-  }
-
   /// يرسم إطار "قبل" وإطار "بعد" (الصور بس) والقالب كطبقة ثابتة فوقهم،
   /// وكود التلفون يصنع منهم الفيديو بالانتقال المختار.
-  Future<void> _makeVideo(VideoStyle style, int speed, Color line) async {
-    final spec = _spec();
-    if (spec == null) return;
+  /// إطار القبل (كل الشبابيك قبل) وإطار البعد (التصميم، أو كله بعد بقوالب
+  /// الدمج حتى الانتقال يكشف الصورة كاملة).
+  (DesignSpec, DesignSpec)? _videoFrames() {
+    final spec = _rawSpec();
+    if (spec == null) return null;
     final t = _template;
     final same = t?.sameFrame ?? false;
     List<SlotMask?>? plain(List<SlotMask?>? m) => m == null
@@ -979,6 +1005,158 @@ class _ComposeScreenState extends State<ComposeScreen> {
     final after = same
         ? frame(List.filled(n, Which.after), false)
         : frame([for (final f in spec.fills) f.which], true);
+    return (before, after);
+  }
+
+  // إعدادات الفيديو (تبويب الفيديو).
+  VideoStyle _vStyle = VideoStyle.slider;
+  int _vSpeed = 1;
+  Color? _vColor;
+  bool _previewing = false;
+  (ui.Image, ui.Image, ui.Image)? _preview;
+
+  Color get _lineColor => _vColor ?? _template?.seam ?? const Color(0xFFFFFFFF);
+
+  /// يرسم إطارات المعاينة (بنص الدقة) ويشغّلها فوق التصميم.
+  Future<void> _togglePreview() async {
+    if (_previewing) {
+      setState(() => _previewing = false);
+      return;
+    }
+    final f = _videoFrames();
+    if (f == null) return;
+    final a = await renderDesign(f.$1, scale: 0.5, layer: DesignLayer.photos);
+    final b = await renderDesign(f.$2, scale: 0.5, layer: DesignLayer.photos);
+    final o = await renderDesign(f.$2, scale: 0.5, layer: DesignLayer.overlay);
+    if (!mounted) return;
+    setState(() {
+      _preview = (a, b, o);
+      _previewing = true;
+    });
+  }
+
+  Widget _videoPanel(Brand b) {
+    final colors = [
+      const Color(0xFFFFFFFF),
+      const Color(0xFFDBB686),
+      _brand.primary,
+    ];
+    final line = _lineColor;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 96,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              for (final v in VideoStyle.values)
+                GestureDetector(
+                  onTap: () => setState(() => _vStyle = v),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 84,
+                    margin: const EdgeInsetsDirectional.only(end: 8),
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(
+                      color: _vStyle == v
+                          ? b.primary.withValues(alpha: 0.16)
+                          : b.glass,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: _vStyle == v ? b.primary : b.line,
+                        width: _vStyle == v ? 2 : 1,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Expanded(child: VideoStyleIcon(style: v)),
+                        const SizedBox(height: 4),
+                        Text(
+                          v.label,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                            color: b.text,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(_vStyle.hint, style: TextStyle(color: b.muted, fontSize: 12)),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: SegmentedButton<int>(
+                showSelectedIcon: false,
+                style: const ButtonStyle(visualDensity: VisualDensity.compact),
+                segments: const [
+                  ButtonSegment(value: 0, label: Text('سريع')),
+                  ButtonSegment(value: 1, label: Text('عادي')),
+                  ButtonSegment(value: 2, label: Text('هادئ')),
+                ],
+                selected: {_vSpeed},
+                onSelectionChanged: (v) => setState(() => _vSpeed = v.first),
+              ),
+            ),
+            if (_vStyle != VideoStyle.dissolve) ...[
+              const SizedBox(width: 10),
+              for (final c in colors)
+                GestureDetector(
+                  onTap: () => setState(() => _vColor = c),
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    margin: const EdgeInsetsDirectional.only(start: 6),
+                    decoration: BoxDecoration(
+                      color: c,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: line == c ? b.primary : b.line,
+                        width: line == c ? 3 : 1,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _togglePreview,
+                icon: Icon(_previewing ? Icons.stop : Icons.play_arrow),
+                label: Text(_previewing ? 'إيقاف المعاينة' : 'معاينة'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: () => _makeVideo(_vStyle, _vSpeed, line),
+                icon: const Icon(Icons.movie_creation_outlined),
+                label: const Text('اصنع الفيديو'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _makeVideo(VideoStyle style, int speed, Color line) async {
+    final frames = _videoFrames();
+    if (frames == null) return;
+    final (before, after) = frames;
+    setState(() => _previewing = false);
     final progress = ValueNotifier<double>(0);
     showDialog<void>(
       context: context,
@@ -1009,20 +1187,16 @@ class _ComposeScreenState extends State<ComposeScreen> {
       final a = await png(before, DesignLayer.photos);
       final b = await png(after, DesignLayer.photos);
       final o = await png(after, DesignLayer.overlay);
-      final (hold, morph) = switch (speed) {
-        0 => (0.6, 1.4),
-        2 => (1.4, 3.6),
-        _ => (1.0, 2.4),
-      };
+      final tm = VideoTiming.of(style, speed);
       final out = await VideoMaker.make(
         beforeFrame: a,
         afterFrame: b,
         overlay: o,
         output: Store.instance.exportPath('mp4'),
         onProgress: (v) => progress.value = v,
-        holdBefore: hold,
-        morph: style == VideoStyle.slider ? morph * 1.4 : morph,
-        holdAfter: hold * 1.6,
+        holdBefore: tm.holdBefore,
+        morph: tm.morph,
+        holdAfter: tm.holdAfter,
         style: style,
         lineColor: line.toARGB32(),
       );
@@ -1082,6 +1256,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
         photos: {for (final e in _photos.entries) e.key: e.value.$1},
       ),
       'blend' => _blendPanel(b),
+      'video' => _videoPanel(b),
       'tools' => DesignToolbar(
         controller: _c,
         twoPhotos: _slots.length == 2,
@@ -1135,6 +1310,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
                       transitionDuration: const Duration(milliseconds: 380),
                       pageBuilder: (_, _, _) => PresentScreen(
                         photos: _photos,
+                        flipped: _flipped,
                         brand: _brand,
                         adjust: Map.of(_c.adjust),
                       ),
@@ -1201,7 +1377,21 @@ class _ComposeScreenState extends State<ComposeScreen> {
                         Positioned.fill(
                           child: DesignCanvas(controller: _c, spec: _spec),
                         ),
-                        ?_seamHandle(w / _size.width),
+                        if (!_previewing) ?_seamHandle(w / _size.width),
+                        if (_previewing && _preview != null)
+                          Positioned.fill(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: VideoPreview(
+                                before: _preview!.$1,
+                                after: _preview!.$2,
+                                overlay: _preview!.$3,
+                                style: _vStyle,
+                                timing: VideoTiming.of(_vStyle, _vSpeed),
+                                line: _lineColor,
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),

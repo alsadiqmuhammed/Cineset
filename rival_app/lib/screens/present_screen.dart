@@ -15,11 +15,13 @@ class PresentScreen extends StatefulWidget {
   final Map<Which, (ui.Image, Photo)> photos;
   final Map<Which, PhotoAdjust> adjust;
   final Brand brand;
+  final Set<Which> flipped;
   const PresentScreen({
     super.key,
     required this.photos,
     required this.brand,
     this.adjust = const {},
+    this.flipped = const {},
   });
 
   @override
@@ -63,7 +65,12 @@ class _PresentScreenState extends State<PresentScreen>
           final cell = Offset.zero & size;
           Framing fit(Which w) {
             final p = widget.photos[w]!;
-            return fitFraming(cell, p.$1, p.$2, const Framing());
+            return fitFraming(
+              cell,
+              p.$1,
+              p.$2,
+              Framing(flip: widget.flipped.contains(w)),
+            );
           }
 
           final two = widget.photos.length == 2;

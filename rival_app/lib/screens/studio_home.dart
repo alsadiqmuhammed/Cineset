@@ -13,6 +13,7 @@ import '../store.dart';
 import 'common.dart';
 import 'compose_screen.dart';
 import 'design_controls.dart';
+import 'ghost_camera.dart';
 import 'studio_controls.dart';
 import 'template_gallery.dart';
 
@@ -63,11 +64,21 @@ class _StudioHomeState extends State<StudioHome> {
     } catch (_) {}
   }
 
-  void _remember(Photo? before, Photo after) {
+  _Case _remember(Photo? before, Photo after) {
+    final old = _cases.where((c) => c.after.path == after.path).firstOrNull;
     _cases.removeWhere((c) => c.after.path == after.path);
-    _cases.insert(0, _Case(before, after, DateTime.now()));
+    final c = _Case(
+      before,
+      after,
+      DateTime.now(),
+      templateId: old?.templateId,
+      adjust: old?.adjust ?? const {},
+      flipped: old?.flipped ?? const {},
+    );
+    _cases.insert(0, c);
     if (_cases.length > 24) _cases = _cases.sublist(0, 24);
     _saveCases();
+    return c;
   }
 
   @override
@@ -96,22 +107,33 @@ class _StudioHomeState extends State<StudioHome> {
   ];
 
   Future<void> _pick(Which which) async {
-    final source = await showModalBottomSheet<ImageSource>(
+    final other = _photos[which == Which.after ? Which.before : Which.after];
+    final source = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (other != null)
+              ListTile(
+                leading: const Icon(Icons.layers_outlined),
+                title: Text('تصوير ${which.label} بالصورة الشبحية'),
+                subtitle: Text(
+                  'صورة ال${which == Which.after ? 'قبل' : 'بعد'} تبين شفافة فوق الكاميرا حتى تطابقها',
+                ),
+                onTap: () => Navigator.pop(context, 'ghost'),
+              ),
             ListTile(
               leading: const Icon(Icons.photo_camera_outlined),
               title: Text('تصوير صورة ${which.label}'),
-              onTap: () => Navigator.pop(context, ImageSource.camera),
+              subtitle: const Text('ويّا خطوط مساعدة'),
+              onTap: () => Navigator.pop(context, 'camera'),
             ),
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
               title: const Text('من المعرض'),
-              onTap: () => Navigator.pop(context, ImageSource.gallery),
+              onTap: () => Navigator.pop(context, 'gallery'),
             ),
             if (_photos[which] != null)
               ListTile(
@@ -126,24 +148,43 @@ class _StudioHomeState extends State<StudioHome> {
         ),
       ),
     );
-    if (source == null) return;
-    final picked = await ImagePicker().pickImage(
-      source: source,
-      maxWidth: 2400,
-      imageQuality: 95,
-    );
-    if (picked == null) return;
+    if (source == null || !mounted) return;
+    final section = Store.instance.section;
+    String? path;
+    if (source == 'gallery') {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 2400,
+        imageQuality: 95,
+      );
+      if (picked != null) path = await importPicked(picked);
+    } else {
+      final shot = await Navigator.push<String>(
+        context,
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => GhostCamera(
+            title: 'صورة ${which.label}',
+            section: section,
+            ghost: source == 'ghost' ? other?.path : null,
+          ),
+        ),
+      );
+      if (shot != null) path = await Store.instance.importPhoto(shot);
+    }
+    if (path == null) return;
     setState(() => _busy.add(which));
     try {
-      var photo = Photo(
-        await importPicked(picked),
-        taken: DateTime.now().millisecondsSinceEpoch,
-      );
-      // المطابقة التلقائية (الفم أو العينين) حتى الصورتين يطلعن بنفس الحجم.
-      try {
-        photo = await _aligner.align(photo) ?? photo;
-      } catch (_) {
-        // بدون كشف الوجه تبقى الصورة بضبط تلقائي عادي.
+      var photo = Photo(path, taken: DateTime.now().millisecondsSinceEpoch);
+      // الأسنان بس: مطابقة تلقائية بزاويتي الفم حتى الصورتين بنفس الحجم.
+      // التجميل بدون معايرة تلقائية: الصور تنحط مثل ما هي، والطبيب يحرّكها
+      // بإصبعه أو يصوّر بالصورة الشبحية حتى تطلع مطابقة من الأساس.
+      if (section == Section.dental) {
+        try {
+          photo = await _aligner.align(photo) ?? photo;
+        } catch (_) {
+          // بدون كشف الفم تبقى الصورة بضبط تلقائي عادي.
+        }
       }
       if (mounted) setState(() => _photos[which] = photo);
     } finally {
@@ -155,13 +196,34 @@ class _StudioHomeState extends State<StudioHome> {
     final after = _photos[Which.after] ?? _photos[Which.before];
     if (after == null) return;
     final before = _photos[Which.after] == null ? null : _photos[Which.before];
-    setState(() => _remember(before, after));
+    late final _Case saved;
+    setState(() => saved = _remember(before, after));
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ComposeScreen.photos(before: before, after: after),
+        builder: (_) => ComposeScreen.photos(
+          before: before,
+          after: after,
+          templateId: saved.templateId,
+          adjust: saved.adjust,
+          flipped: saved.flipped,
+          onLeave: (id, adjust, flipped) {
+            final i = _cases.indexWhere((c) => c.after.path == after.path);
+            if (i < 0) return;
+            _cases[i] = _Case(
+              before,
+              after,
+              DateTime.now(),
+              templateId: id,
+              adjust: adjust,
+              flipped: flipped,
+            );
+            _saveCases();
+          },
+        ),
       ),
     );
+    if (mounted) setState(() {});
     _loadDesigns();
   }
 
@@ -593,12 +655,28 @@ class _Case {
   final Photo? before;
   final Photo after;
   final DateTime at;
-  const _Case(this.before, this.after, this.at);
+
+  /// آخر قالب وتعديلات (حتى ترجع للحالة مثل ما تركتها).
+  final String? templateId;
+  final Map<Which, PhotoAdjust> adjust;
+  final Set<Which> flipped;
+  const _Case(
+    this.before,
+    this.after,
+    this.at, {
+    this.templateId,
+    this.adjust = const {},
+    this.flipped = const {},
+  });
 
   Map<String, dynamic> toJson() => {
     if (before != null) 'before': before!.toJson(),
     'after': after.toJson(),
     'at': at.millisecondsSinceEpoch,
+    if (templateId != null) 'template': templateId,
+    if (adjust.isNotEmpty)
+      'adjust': {for (final e in adjust.entries) e.key.name: e.value.toJson()},
+    if (flipped.isNotEmpty) 'flip': [for (final w in flipped) w.name],
   };
 
   factory _Case.fromJson(Map<String, dynamic> j) => _Case(
@@ -607,6 +685,17 @@ class _Case {
         : Photo.fromJson(j['before'] as Map<String, dynamic>),
     Photo.fromJson(j['after'] as Map<String, dynamic>),
     DateTime.fromMillisecondsSinceEpoch(j['at'] as int),
+    templateId: j['template'] as String?,
+    adjust: {
+      for (final e in ((j['adjust'] as Map?) ?? const {}).entries)
+        Which.values.byName(e.key as String): PhotoAdjust.fromJson(
+          Map<String, dynamic>.from(e.value as Map),
+        ),
+    },
+    flipped: {
+      for (final n in (j['flip'] as List?) ?? const [])
+        Which.values.byName(n as String),
+    },
   );
 }
 
