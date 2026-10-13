@@ -98,13 +98,13 @@ class _RulerSliderState extends State<RulerSlider>
                 children: [
                   AnimatedDefaultTextStyle(
                     duration: const Duration(milliseconds: 150),
-                    style: TextStyle(
+                    // نكمل على خط التطبيق (هذا الويدجت يستبدل النمط كله).
+                    style: DefaultTextStyle.of(context).style.copyWith(
                       fontWeight: FontWeight.w800,
                       fontSize: (value - widget.reset).abs() > 0.004 ? 14 : 13,
                       color: (value - widget.reset).abs() > 0.004
                           ? b.primary
                           : b.text,
-                      fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                     child: Text(label),
                   ),
