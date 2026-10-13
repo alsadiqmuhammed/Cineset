@@ -335,7 +335,7 @@ class PhotoAdjust {
 
   /// تحسين تلقائي: يقرأ متوسط الإضاءة والتباين وتوازن الألوان بالصورة
   /// ويقرّبها لصورة متوازنة (بدون مبالغة).
-  static Future<PhotoAdjust> auto(ui.Image img) async {
+  static Future<PhotoAdjust> auto(ui.Image img, {bool beauty = false}) async {
     // نصغّر قبل القراءة: ٦٤ بكسل تكفي للإحصاء.
     const side = 64;
     final rec = ui.PictureRecorder();
@@ -349,10 +349,15 @@ class PhotoAdjust {
     final data = await small.toByteData(format: ui.ImageByteFormat.rawRgba);
     small.dispose();
     if (data == null) return none;
-    return fromPixels(data.buffer.asUint8List());
+    return fromPixels(data.buffer.asUint8List(), beauty: beauty);
   }
 
-  static PhotoAdjust fromPixels(Uint8List px) {
+  /// معايير مختلفة لكل قسم:
+  /// - الأسنان: تباين أعلى شوية حتى تبين تفاصيل الأسنان، واللون يميل للحياد
+  ///   البارد (الأصفر يخلّي الأسنان تبين أغمق)، وتشبّع خفيف حتى ما تحمرّ اللثة.
+  /// - التجميل: إضاءة أنعم وأدفأ للبشرة، تباين أقل حتى ما تبين المسامات،
+  ///   ونعومة خفيفة.
+  static PhotoAdjust fromPixels(Uint8List px, {bool beauty = false}) {
     var n = 0;
     double sr = 0, sg = 0, sb = 0, sl = 0, sl2 = 0;
     for (var i = 0; i + 3 < px.length; i += 4) {
@@ -370,13 +375,23 @@ class PhotoAdjust {
     final sd = math.sqrt(math.max(0, sl2 / n - mean * mean));
     final r = sr / n, g = sg / n, b = sb / n;
     double clamp(double v, double lim) => v.clamp(-lim, lim);
+    if (beauty) {
+      return PhotoAdjust(
+        brightness: clamp((0.58 - mean) * 1.5, 0.45),
+        contrast: clamp((0.18 - sd) * 2.4 - 0.06, 0.35),
+        // البشرة الطبيعية تميل للدفء (الأحمر أعلى من الأزرق بحدود ١٤٪).
+        warmth: clamp((b - r + 0.14) * 1.8 + 0.06, 0.35),
+        tint: clamp((g - (r + b) / 2 + 0.02) * 2.2, 0.3),
+        saturation: 0.06,
+        fade: 0.08,
+      );
+    }
     return PhotoAdjust(
-      brightness: clamp((0.52 - mean) * 1.6, 0.45),
-      contrast: clamp((0.22 - sd) * 3, 0.4),
-      // يعادل اللون المائل (أزرق أو أصفر) بشوية.
-      warmth: clamp((b - r + 0.12) * 2.0, 0.35),
+      brightness: clamp((0.54 - mean) * 1.6, 0.45),
+      contrast: clamp((0.24 - sd) * 3 + 0.06, 0.45),
+      warmth: clamp((b - r + 0.12) * 2.0 - 0.06, 0.35),
       tint: clamp((g - (r + b) / 2 + 0.03) * 2.5, 0.3),
-      saturation: 0.08,
+      saturation: 0.03,
     );
   }
 }

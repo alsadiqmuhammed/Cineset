@@ -19,6 +19,9 @@ class VideoMaker {
     double morph = 2.0,
     double holdAfter = 2.0,
     int fps = 30,
+    VideoStyle style = VideoStyle.dissolve,
+    int lineColor = 0xFFFFFFFF,
+    double lineWidth = 0.006,
     Duration timeout = const Duration(minutes: 2),
   }) async {
     _channel.setMethodCallHandler((call) async {
@@ -38,6 +41,9 @@ class VideoMaker {
             'morph': morph,
             'holdAfter': holdAfter,
             'fps': fps,
+            'style': style.index,
+            'lineColor': lineColor,
+            'lineWidth': lineWidth,
           })
           .timeout(timeout);
       return path!;
@@ -47,4 +53,16 @@ class VideoMaker {
       _channel.setMethodCallHandler(null);
     }
   }
+}
+
+/// أنماط الانتقال من قبل لبعد (نفس ترتيب الأرقام بالكود الأصلي على التلفون).
+enum VideoStyle {
+  dissolve('ذوبان', 'قبل تذوب لبعد'),
+  wipe('مسح', 'خط يمسح من قبل لبعد'),
+  slider('سلايدر', 'الخط يتحرك ويستقر بالنص'),
+  rise('صعود', 'بعد تطلع من الأسفل'),
+  circle('دائرة', 'بعد تنفتح من النص');
+
+  final String label, hint;
+  const VideoStyle(this.label, this.hint);
 }

@@ -39,12 +39,40 @@ object VideoMaker {
     private const val TIMEOUT_US = 10_000L
     private const val STALL_NS = 20_000_000_000L
 
-    class Timing(val holdBefore: Double, val morph: Double, val holdAfter: Double, val fps: Int) {
+    /**
+     * Transition styles: 0 dissolve, 1 wipe (after grows from the left edge),
+     * 2 slider (the divider sweeps across and settles in the middle),
+     * 3 vertical wipe (after rises from the bottom), 4 circle reveal.
+     */
+    class Timing(
+        val holdBefore: Double,
+        val morph: Double,
+        val holdAfter: Double,
+        val fps: Int,
+        val style: Int = 0,
+        val lineColor: Int = 0xFFFFFFFF.toInt(),
+        val lineWidth: Double = 0.006,
+    ) {
         val total = ((holdBefore + morph + holdAfter) * fps).toInt()
-        fun mix(i: Int): Double {
+        private fun p(i: Int): Double {
             val t = i.toDouble() / fps
-            val x = ((t - holdBefore) / morph).coerceIn(0.0, 1.0)
-            return x * x * (3 - 2 * x)
+            return ((t - holdBefore) / morph).coerceIn(0.0, 1.0)
+        }
+        private fun ease(x: Double) = x * x * (3 - 2 * x)
+        fun mix(i: Int): Double = ease(p(i))
+
+        /** Divider position (0..1) for the wipe styles. */
+        fun edge(i: Int): Double {
+            val x = p(i)
+            return when (style) {
+                2 -> when {
+                    x < 0.4 -> 0.8 * ease(x / 0.4)
+                    x < 0.75 -> 0.8 - 0.55 * ease((x - 0.4) / 0.35)
+                    else -> 0.25 + 0.25 * ease((x - 0.75) / 0.25)
+                }
+                3 -> 1 - ease(x)
+                else -> ease(x)
+            }
         }
         fun zoom(i: Int) = 1.0 + 0.06 * (i.toDouble() / total)
         fun ptsUs(i: Int) = i * 1_000_000L / fps
@@ -191,10 +219,10 @@ object VideoMaker {
                 muxer = MediaMuxer(outPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
                 val drainer = Drainer(codec, muxer, log)
                 egl = Egl(surface)
-                val renderer = Renderer(before, after, overlay)
+                val renderer = Renderer(before, after, overlay, timing, w.toFloat() / h)
                 for (i in 0 until timing.total) {
                     GLES20.glViewport(0, 0, w, h)
-                    renderer.draw(timing.mix(i).toFloat(), timing.zoom(i).toFloat())
+                    renderer.draw(timing.mix(i).toFloat(), timing.zoom(i).toFloat(), timing.edge(i).toFloat())
                     egl.present(timing.ptsUs(i) * 1000)
                     drainer.drain(false)
                     drainer.watchdog()
@@ -262,7 +290,13 @@ object VideoMaker {
     }
 
     /** Draws the cross-dissolve with zoom, then the overlay (premultiplied) on top. */
-    private class Renderer(before: Bitmap, after: Bitmap, overlay: Bitmap?) {
+    private class Renderer(
+        before: Bitmap,
+        after: Bitmap,
+        overlay: Bitmap?,
+        private val timing: Timing,
+        private val aspect: Float,
+    ) {
         private val program: Int
         private val textures = IntArray(3)
         private val hasOverlay = overlay != null
@@ -289,9 +323,38 @@ object VideoMaker {
                 uniform float uMix;
                 uniform float uZoom;
                 uniform float uHasOverlay;
+                uniform float uStyle;
+                uniform float uEdge;
+                uniform float uAspect;
+                uniform float uLineW;
+                uniform vec3 uLine;
                 void main() {
                     vec2 z = (vUv - 0.5) / uZoom + 0.5;
-                    vec4 c = mix(texture2D(uBefore, z), texture2D(uAfter, z), uMix);
+                    vec4 b = texture2D(uBefore, z);
+                    vec4 a = texture2D(uAfter, z);
+                    vec4 c;
+                    float line = 0.0;
+                    float shown = step(0.001, uEdge) * step(uEdge, 0.999);
+                    if (uStyle < 0.5) {
+                        c = mix(b, a, uMix);
+                    } else if (uStyle < 2.5) {
+                        float k = smoothstep(uEdge - 0.0015, uEdge + 0.0015, vUv.x);
+                        c = mix(a, b, k);
+                        line = (1.0 - smoothstep(uLineW * 0.5, uLineW * 0.5 + 0.0015, abs(vUv.x - uEdge))) * shown;
+                    } else if (uStyle < 3.5) {
+                        float k = smoothstep(uEdge - 0.0015, uEdge + 0.0015, vUv.y);
+                        c = mix(b, a, k);
+                        float lw = uLineW * uAspect;
+                        line = (1.0 - smoothstep(lw * 0.5, lw * 0.5 + 0.0015, abs(vUv.y - uEdge))) * shown;
+                    } else {
+                        vec2 d = vec2(vUv.x - 0.5, (vUv.y - 0.5) / uAspect);
+                        float r = uMix * 0.75;
+                        float k = smoothstep(r - 0.004, r + 0.004, length(d));
+                        c = mix(a, b, k);
+                        float ring = step(0.001, uMix) * step(uMix, 0.999);
+                        line = (1.0 - smoothstep(uLineW * 0.5, uLineW * 0.5 + 0.0015, abs(length(d) - r))) * ring;
+                    }
+                    c = mix(c, vec4(uLine, 1.0), line);
                     if (uHasOverlay > 0.5) {
                         vec4 o = texture2D(uOverlay, vUv);
                         c = o + c * (1.0 - o.a);
@@ -318,7 +381,7 @@ object VideoMaker {
             check(err == GLES20.GL_NO_ERROR) { "texture upload failed: $err" }
         }
 
-        fun draw(mix: Float, zoom: Float) {
+        fun draw(mix: Float, zoom: Float, edge: Float) {
             GLES20.glUseProgram(program)
             val pos = GLES20.glGetAttribLocation(program, "aPos")
             GLES20.glEnableVertexAttribArray(pos)
@@ -331,6 +394,15 @@ object VideoMaker {
             GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uMix"), mix)
             GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uZoom"), zoom)
             GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uHasOverlay"), if (hasOverlay) 1f else 0f)
+            GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uStyle"), timing.style.toFloat())
+            GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uEdge"), edge)
+            GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uAspect"), aspect)
+            GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uLineW"), timing.lineWidth.toFloat())
+            val lc = timing.lineColor
+            GLES20.glUniform3f(
+                GLES20.glGetUniformLocation(program, "uLine"),
+                ((lc shr 16) and 255) / 255f, ((lc shr 8) and 255) / 255f, (lc and 255) / 255f,
+            )
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
             val err = GLES20.glGetError()
             check(err == GLES20.GL_NO_ERROR) { "draw failed: $err" }
@@ -406,7 +478,7 @@ object VideoMaker {
                     if (i == timing.total) {
                         codec.queueInputBuffer(index, 0, 0, pts, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                     } else {
-                        drawFrame(canvas, paint, before, after, overlay, timing.mix(i), timing.zoom(i))
+                        drawFrame(canvas, paint, before, after, overlay, timing.mix(i), timing.zoom(i), timing.edge(i))
                         frame.getPixels(argb, 0, w, 0, 0, w, h)
                         val image = codec.getInputImage(index) ?: error("no input image")
                         writeYuv(argb, w, h, image)
@@ -431,18 +503,47 @@ object VideoMaker {
 
         private fun drawFrame(
             canvas: Canvas, paint: Paint, before: Bitmap, after: Bitmap, overlay: Bitmap?,
-            mix: Double, zoom: Double,
+            mix: Double, zoom: Double, edge: Double,
         ) {
             canvas.save()
             canvas.scale(zoom.toFloat(), zoom.toFloat(), w / 2f, h / 2f)
             canvas.scale(w.toFloat() / before.width, h.toFloat() / before.height)
             paint.alpha = 255
             canvas.drawBitmap(before, 0f, 0f, paint)
-            if (mix > 0) {
-                paint.alpha = (mix * 255).toInt().coerceIn(0, 255)
-                canvas.drawBitmap(after, 0f, 0f, paint)
+            val bw = before.width.toFloat()
+            val bh = before.height.toFloat()
+            when (timing.style) {
+                0 -> if (mix > 0) {
+                    paint.alpha = (mix * 255).toInt().coerceIn(0, 255)
+                    canvas.drawBitmap(after, 0f, 0f, paint)
+                }
+                1, 2 -> {
+                    canvas.save(); canvas.clipRect(0f, 0f, (edge * bw).toFloat(), bh)
+                    canvas.drawBitmap(after, 0f, 0f, paint); canvas.restore()
+                }
+                3 -> {
+                    canvas.save(); canvas.clipRect(0f, (edge * bh).toFloat(), bw, bh)
+                    canvas.drawBitmap(after, 0f, 0f, paint); canvas.restore()
+                }
+                else -> if (mix > 0) {
+                    val path = android.graphics.Path()
+                    path.addCircle(bw / 2, bh / 2, (mix * 0.75 * bw).toFloat(), android.graphics.Path.Direction.CW)
+                    canvas.save(); canvas.clipPath(path)
+                    canvas.drawBitmap(after, 0f, 0f, paint); canvas.restore()
+                }
             }
             canvas.restore()
+            if (timing.style in 1..3 && edge > 0.001 && edge < 0.999) {
+                val lp = Paint().apply { color = timing.lineColor }
+                val lw = (timing.lineWidth * w).toFloat()
+                if (timing.style == 3) {
+                    val y = (edge * h).toFloat()
+                    canvas.drawRect(0f, y - lw / 2, w.toFloat(), y + lw / 2, lp)
+                } else {
+                    val x = (edge * w).toFloat()
+                    canvas.drawRect(x - lw / 2, 0f, x + lw / 2, h.toFloat(), lp)
+                }
+            }
             if (overlay != null) {
                 paint.alpha = 255
                 canvas.save()

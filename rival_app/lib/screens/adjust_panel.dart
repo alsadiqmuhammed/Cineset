@@ -78,12 +78,16 @@ class _AdjustPanelState extends State<AdjustPanel> {
   }
 
   Future<void> _auto() async {
+    final beauty = context.brand.section == Section.beauty;
     setState(() => _working = true);
     try {
       for (final w in _targets) {
         final img = widget.photos[w];
         if (img != null) {
-          widget.controller.setAdjust(w, await PhotoAdjust.auto(img));
+          widget.controller.setAdjust(
+            w,
+            await PhotoAdjust.auto(img, beauty: beauty),
+          );
         }
       }
     } finally {

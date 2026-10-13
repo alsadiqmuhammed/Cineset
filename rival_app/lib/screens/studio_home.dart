@@ -13,6 +13,7 @@ import '../store.dart';
 import 'common.dart';
 import 'compose_screen.dart';
 import 'design_controls.dart';
+import 'studio_controls.dart';
 import 'template_gallery.dart';
 
 /// الشاشة الرئيسية لريڤال ستوديو: القسم، صورتين، وتصميم.
@@ -89,6 +90,10 @@ class _StudioHomeState extends State<StudioHome> {
     );
     setState(() => _designs = files);
   }
+
+  List<Widget> _staggered(List<Widget> items) => [
+    for (final (i, w) in items.indexed) Entrance(index: i, child: w),
+  ];
 
   Future<void> _pick(Which which) async {
     final source = await showModalBottomSheet<ImageSource>(
@@ -169,7 +174,7 @@ class _StudioHomeState extends State<StudioHome> {
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-          children: [
+          children: _staggered([
             Row(
               children: [
                 GlossyEmblem(section: b.section, size: 54),
@@ -236,30 +241,34 @@ class _StudioHomeState extends State<StudioHome> {
             AnimatedOpacity(
               duration: const Duration(milliseconds: 250),
               opacity: ready ? 1 : 0.45,
-              child: GestureDetector(
+              child: Pressable(
                 onTap: ready ? _design : null,
-                child: Container(
-                  height: 60,
-                  decoration: BoxDecoration(
-                    gradient: b.action,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: ready ? b.actionShadow : null,
-                  ),
-                  alignment: Alignment.center,
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.auto_awesome, color: Colors.white),
-                      SizedBox(width: 10),
-                      Text(
-                        'صمّم الحالة',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
+                child: Shine(
+                  on: ready,
+                  radius: BorderRadius.circular(20),
+                  child: Container(
+                    height: 60,
+                    decoration: BoxDecoration(
+                      gradient: b.action,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: ready ? b.actionShadow : null,
+                    ),
+                    alignment: Alignment.center,
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.auto_awesome, color: Colors.white),
+                        SizedBox(width: 10),
+                        Text(
+                          'صمّم الحالة',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -422,7 +431,7 @@ class _StudioHomeState extends State<StudioHome> {
                 style: TextStyle(color: b.muted, fontSize: 12),
               ),
             ],
-          ],
+          ]),
         ),
       ),
     );
@@ -484,7 +493,7 @@ class _PhotoTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final b = context.brand;
     final p = photo;
-    return GestureDetector(
+    return Pressable(
       onTap: busy ? null : onTap,
       child: AspectRatio(
         aspectRatio: 0.78,
@@ -500,7 +509,22 @@ class _PhotoTile extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               if (p != null)
-                Image.file(File(p.path), fit: BoxFit.cover, cacheWidth: 500)
+                Image.file(
+                  File(p.path),
+                  fit: BoxFit.cover,
+                  cacheWidth: 500,
+                  frameBuilder: (context, child, frame, sync) =>
+                      AnimatedOpacity(
+                        opacity: frame == null && !sync ? 0 : 1,
+                        duration: const Duration(milliseconds: 380),
+                        child: AnimatedScale(
+                          scale: frame == null && !sync ? 1.06 : 1,
+                          duration: const Duration(milliseconds: 520),
+                          curve: Curves.easeOutCubic,
+                          child: child,
+                        ),
+                      ),
+                )
               else
                 Column(
                   mainAxisAlignment: MainAxisAlignment.center,

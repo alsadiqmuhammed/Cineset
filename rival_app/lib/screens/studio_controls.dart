@@ -1,13 +1,16 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 
 import '../brand.dart';
+import '../video.dart';
 
-/// مسطرة تمرير مثل برامج تعديل الصور: تسحبها يمين ويسار، والمؤشر ثابت
-/// بالنص. ضغطتين ترجعها للصفر.
-class RulerSlider extends StatelessWidget {
+/// مسطرة تمرير مثل برامج تعديل الصور: تسحبها يمين ويسار والمؤشر ثابت
+/// بالنص، وتكمل تنزلق شوية بعد ما تترك (مثل التمرير الطبيعي) وتوقف بنعومة.
+/// ضغطتين ترجعها للصفر.
+class RulerSlider extends StatefulWidget {
   final double value, min, max;
   final ValueChanged<double> onChanged;
   final double reset;
@@ -23,62 +26,104 @@ class RulerSlider extends StatelessWidget {
   });
 
   @override
+  State<RulerSlider> createState() => _RulerSliderState();
+}
+
+class _RulerSliderState extends State<RulerSlider>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _fling = AnimationController.unbounded(
+    vsync: this,
+  )..addListener(_onFling);
+  double _span = 1;
+  int _lastTick = 0;
+
+  @override
+  void dispose() {
+    _fling.dispose();
+    super.dispose();
+  }
+
+  double get _range => widget.max - widget.min;
+
+  void _emit(double v) {
+    final c = v.clamp(widget.min, widget.max);
+    // نبضة خفيفة كل عُشر من المسطرة، وعند الصفر.
+    final tick = ((c - widget.min) / _range * 20).round();
+    if (tick != _lastTick) {
+      _lastTick = tick;
+      HapticFeedback.selectionClick();
+    }
+    widget.onChanged(c);
+  }
+
+  void _onFling() {
+    final v = _fling.value;
+    if (v <= widget.min || v >= widget.max) _fling.stop();
+    _emit(v);
+  }
+
+  double get _dir => Directionality.of(context) == TextDirection.rtl ? 1 : -1;
+
+  @override
   Widget build(BuildContext context) {
     final b = context.brand;
+    final value = widget.value;
     final label =
-        format?.call(value) ?? ar((value * 100).round()).replaceAll('-', '−');
+        widget.format?.call(value) ??
+        ar((value * 100).round()).replaceAll('-', '−');
     return LayoutBuilder(
       builder: (context, box) {
-        // عرض المسطرة كاملة = مرتين عرض الشاشة.
-        final span = box.maxWidth * 2;
+        // عرض المسطرة كاملة = مرتين ونص عرض الشاشة (حركة أدق).
+        _span = box.maxWidth * 2.5;
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onDoubleTap: () {
-            HapticFeedback.selectionClick();
-            onChanged(reset);
+            _fling.stop();
+            HapticFeedback.mediumImpact();
+            widget.onChanged(widget.reset);
           },
-          onHorizontalDragUpdate: (d) {
-            // باتجاه اليمين لليسار: السحب لليسار يزيد القيمة.
-            final dir = Directionality.of(context) == TextDirection.rtl
-                ? 1
-                : -1;
-            final v = (value + dir * d.delta.dx / span * (max - min)).clamp(
-              min,
-              max,
-            );
-            if ((v - reset).abs() < (max - min) * 0.004 && value != reset) {
-              HapticFeedback.selectionClick();
-            }
-            onChanged(v);
+          onHorizontalDragStart: (_) => _fling.stop(),
+          onHorizontalDragUpdate: (d) =>
+              _emit(widget.value + _dir * d.delta.dx / _span * _range),
+          onHorizontalDragEnd: (d) {
+            final v = _dir * d.velocity.pixelsPerSecond.dx / _span * _range;
+            if (v.abs() < _range * 0.05) return;
+            _fling.value = widget.value;
+            _fling.animateWith(FrictionSimulation(0.02, widget.value, v));
           },
-          child: SizedBox(
-            height: 58,
-            child: Column(
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13,
-                    color: b.text,
-                    fontFeatures: const [FontFeature.tabularFigures()],
+          child: RepaintBoundary(
+            child: SizedBox(
+              height: 58,
+              child: Column(
+                children: [
+                  AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 150),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: (value - widget.reset).abs() > 0.004 ? 14 : 13,
+                      color: (value - widget.reset).abs() > 0.004
+                          ? b.primary
+                          : b.text,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                    child: Text(label),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Expanded(
-                  child: CustomPaint(
-                    size: Size.infinite,
-                    painter: _RulerPainter(
-                      t: (value - min) / (max - min),
-                      zero: (reset - min) / (max - min),
-                      span: span,
-                      tick: b.muted,
-                      accent: b.primary,
-                      rtl: Directionality.of(context) == TextDirection.rtl,
+                  const SizedBox(height: 4),
+                  Expanded(
+                    child: CustomPaint(
+                      size: Size.infinite,
+                      painter: _RulerPainter(
+                        t: (value - widget.min) / _range,
+                        zero: (widget.reset - widget.min) / _range,
+                        span: _span,
+                        tick: b.muted,
+                        accent: b.primary,
+                        rtl: Directionality.of(context) == TextDirection.rtl,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -326,4 +371,232 @@ class EditorTabs extends StatelessWidget {
       ),
     );
   }
+}
+
+/// معاينة صغيرة متحركة لنمط الفيديو (مربع رمادي = قبل، ملوّن = بعد).
+class VideoStyleIcon extends StatefulWidget {
+  final VideoStyle style;
+  const VideoStyleIcon({super.key, required this.style});
+
+  @override
+  State<VideoStyleIcon> createState() => _VideoStyleIconState();
+}
+
+class _VideoStyleIconState extends State<VideoStyleIcon>
+    with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2400),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = context.brand;
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, _) => CustomPaint(
+        size: Size.infinite,
+        painter: _StyleIconPainter(
+          widget.style,
+          Curves.easeInOut.transform(
+            (_c.value < 0.5 ? _c.value * 2 : 2 - _c.value * 2).clamp(0, 1),
+          ),
+          b.muted,
+          b.primary,
+        ),
+      ),
+    );
+  }
+}
+
+class _StyleIconPainter extends CustomPainter {
+  final VideoStyle style;
+  final double t;
+  final Color before, after;
+  _StyleIconPainter(this.style, this.t, this.before, this.after);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      const Radius.circular(10),
+    );
+    canvas.save();
+    canvas.clipRRect(r);
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()..color = before.withValues(alpha: 0.5),
+    );
+    final a = Paint()..color = after;
+    final line = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 2;
+    switch (style) {
+      case VideoStyle.dissolve:
+        canvas.drawRect(
+          Offset.zero & size,
+          a..color = after.withValues(alpha: t),
+        );
+      case VideoStyle.wipe:
+      case VideoStyle.slider:
+        final x = size.width * (style == VideoStyle.slider ? 0.2 + 0.6 * t : t);
+        canvas.drawRect(Rect.fromLTWH(0, 0, x, size.height), a);
+        canvas.drawLine(Offset(x, 0), Offset(x, size.height), line);
+      case VideoStyle.rise:
+        final y = size.height * (1 - t);
+        canvas.drawRect(Rect.fromLTWH(0, y, size.width, size.height - y), a);
+        canvas.drawLine(Offset(0, y), Offset(size.width, y), line);
+      case VideoStyle.circle:
+        final c = size.center(Offset.zero);
+        canvas.drawCircle(c, size.longestSide * 0.75 * t, a);
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_StyleIconPainter o) => o.t != t || o.style != style;
+}
+
+/// دخول ناعم (يطلع من تحت ويوضح) بتأخير، حتى عناصر الشاشة تجي وحدة ورا وحدة.
+class Entrance extends StatelessWidget {
+  final int index;
+  final Widget child;
+  const Entrance({super.key, required this.index, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final delay = (index * 70).clamp(0, 600);
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: 520 + delay),
+      curve: Interval(delay / (520 + delay), 1, curve: Curves.easeOutCubic),
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(
+          offset: Offset(0, (1 - t) * 24),
+          child: child,
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// لمعة تمشي على الزر لما يكون جاهز (تجذب العين للخطوة الجاية).
+class Shine extends StatefulWidget {
+  final bool on;
+  final BorderRadius radius;
+  final Widget child;
+  const Shine({
+    super.key,
+    required this.on,
+    required this.radius,
+    required this.child,
+  });
+
+  @override
+  State<Shine> createState() => _ShineState();
+}
+
+class _ShineState extends State<Shine> with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2600),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.on) _c.repeat();
+  }
+
+  @override
+  void didUpdateWidget(Shine old) {
+    super.didUpdateWidget(old);
+    if (widget.on && !_c.isAnimating) _c.repeat();
+    if (!widget.on) _c.stop();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: widget.radius,
+      child: Stack(
+        children: [
+          widget.child,
+          if (widget.on)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: _c,
+                  builder: (context, _) {
+                    final x = -1.6 + _c.value * 3.6;
+                    return DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment(x - 0.5, -1),
+                          end: Alignment(x + 0.5, 1),
+                          colors: const [
+                            Color(0x00FFFFFF),
+                            Color(0x55FFFFFF),
+                            Color(0x00FFFFFF),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// يضغط ويرجع بنعومة (إحساس زر حقيقي).
+class Pressable extends StatefulWidget {
+  final VoidCallback? onTap;
+  final Widget child;
+  const Pressable({super.key, required this.onTap, required this.child});
+
+  @override
+  State<Pressable> createState() => _PressableState();
+}
+
+class _PressableState extends State<Pressable> {
+  bool _down = false;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTapDown: widget.onTap == null
+        ? null
+        : (_) => setState(() => _down = true),
+    onTapUp: widget.onTap == null ? null : (_) => setState(() => _down = false),
+    onTapCancel: () => setState(() => _down = false),
+    onTap: widget.onTap == null
+        ? null
+        : () {
+            HapticFeedback.lightImpact();
+            widget.onTap!();
+          },
+    child: AnimatedScale(
+      scale: _down ? 0.96 : 1,
+      duration: const Duration(milliseconds: 140),
+      curve: Curves.easeOut,
+      child: widget.child,
+    ),
+  );
 }

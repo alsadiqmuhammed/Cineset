@@ -732,14 +732,26 @@ DesignElement doctorNameElement(String name, Brand b) => DesignElement.text(
 /// يرسم التصميم كامل. نفس الدالة للمعاينة الحيّة وللتصدير.
 /// الترتيب: الخلفية ← الصور ← طبقة الإضافات (تضبيب، أشكال، رسم، ممحاة)
 /// ← القالب/الإطار ← شارات قبل وبعد.
-void paintDesign(Canvas canvas, DesignSpec s) {
+/// طبقات التصميم: كله، أو الصور بس (للفيديو)، أو اللي فوقها بس (القالب
+/// والشارات والنصوص، بخلفية شفافة) حتى يبقى ثابت فوق حركة الفيديو.
+enum DesignLayer { all, photos, overlay }
+
+void paintDesign(
+  Canvas canvas,
+  DesignSpec s, {
+  DesignLayer layer = DesignLayer.all,
+}) {
   final full = Offset.zero & s.size;
-  canvas.drawRect(
-    full,
-    Paint()
-      ..color =
-          s.background ?? (s.template == null ? s.brand.accent : s.brand.bg),
-  );
+  final under = layer != DesignLayer.overlay,
+      over = layer != DesignLayer.photos;
+  if (under) {
+    canvas.drawRect(
+      full,
+      Paint()
+        ..color =
+            s.background ?? (s.template == null ? s.brand.accent : s.brand.bg),
+    );
+  }
 
   void photos(Canvas c) {
     for (var i = 0; i < s.slots.length && i < s.fills.length; i++) {
@@ -768,11 +780,13 @@ void paintDesign(Canvas canvas, DesignSpec s) {
     }
   }
 
-  if (s.backdrop) _paintBackdrop(canvas, s);
-  photos(canvas);
-  if (s.seam != null) _paintSeam(canvas, s);
+  if (under) {
+    if (s.backdrop) _paintBackdrop(canvas, s);
+    photos(canvas);
+    if (s.seam != null && layer == DesignLayer.all) _paintSeam(canvas, s);
+  }
 
-  if (s.marks.isNotEmpty) {
+  if (under && s.marks.isNotEmpty) {
     canvas.saveLayer(full, Paint());
     for (final m in s.marks) {
       _paintMark(canvas, m, s, photos);
@@ -780,6 +794,7 @@ void paintDesign(Canvas canvas, DesignSpec s) {
     canvas.restore();
   }
 
+  if (!over) return;
   if (s.template != null) {
     canvas.drawImageRect(
       s.template!,
@@ -1013,10 +1028,14 @@ Path _brushArea(List<Offset> pts, double r) {
   return path;
 }
 
-Future<ui.Image> renderDesign(DesignSpec s, {double scale = 1}) {
+Future<ui.Image> renderDesign(
+  DesignSpec s, {
+  double scale = 1,
+  DesignLayer layer = DesignLayer.all,
+}) {
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder)..scale(scale);
-  paintDesign(canvas, s);
+  paintDesign(canvas, s, layer: layer);
   return recorder.endRecording().toImage(
     (s.size.width * scale).round(),
     (s.size.height * scale).round(),

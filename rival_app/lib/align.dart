@@ -29,7 +29,9 @@ class AutoAligner {
         x.boundingBox.width * x.boundingBox.height,
       ),
     );
-    final lm = faces.first.landmarks;
+    final face = faces.first;
+    final lm = face.landmarks;
+    if (target == AlignTarget.eyes) return _faceBox(photo, face);
     final (l, r) = target == AlignTarget.mouth
         ? (FaceLandmarkType.leftMouth, FaceLandmarkType.rightMouth)
         : (FaceLandmarkType.leftEye, FaceLandmarkType.rightEye);
@@ -40,6 +42,26 @@ class AutoAligner {
       Offset(left.x.toDouble(), left.y.toDouble()),
       Offset(right.x.toDouble(), right.y.toDouble()),
     );
+  }
+
+  /// التجميل: المعيار الوجه كله مو الفم. النقطتين على خط العينين (للميلان)
+  /// ويمرّن بمركز الوجه، والمسافة بيناتهن من عرض الوجه، فالوجه يطلع بنفس
+  /// الحجم والمكان بالصورتين حتى لو الصورة من بعيد أو قريب. إذا ما بانت
+  /// العينين (وجه جانبي) يبقى أفقي ويعتمد على مربع الوجه بس.
+  Photo _faceBox(Photo photo, Face face) {
+    final box = face.boundingBox;
+    final c = Offset(box.center.dx, box.center.dy);
+    var dir = const Offset(1, 0);
+    final le = face.landmarks[FaceLandmarkType.leftEye]?.position;
+    final re = face.landmarks[FaceLandmarkType.rightEye]?.position;
+    if (le != null && re != null) {
+      final d = Offset((re.x - le.x).toDouble(), (re.y - le.y).toDouble());
+      if (d.distance > 1) dir = d / d.distance;
+      if (dir.dx < 0) dir = -dir;
+    }
+    // عرض الوجه يصير ~٦٠٪ من الشباك (الشباك يحط مسافة النقطتين على ٤٢٪).
+    final half = box.width * (0.42 / 0.6) / 2;
+    return photo.withPoints(c - dir * half, c + dir * half);
   }
 
   void close() => _detector.close().catchError((_) {});

@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -181,6 +182,54 @@ void main() {
     final mid = at(line, 400, const Offset(200, 200));
     expect(mid.g, greaterThan(0.5)); // أبيض على الخط
   });
+
+  test('auto adjust follows different rules for teeth and skin', () {
+    final px = Uint8List.fromList([
+      for (var i = 0; i < 64; i++) ...[200, 160, 140, 255],
+    ]);
+    final dental = PhotoAdjust.fromPixels(px);
+    final beauty = PhotoAdjust.fromPixels(px, beauty: true);
+    // البشرة أدفأ وأنعم، والأسنان تباين أعلى ولون أبرد.
+    expect(beauty.warmth, greaterThan(dental.warmth));
+    expect(beauty.contrast, lessThan(dental.contrast));
+    expect(beauty.fade, greaterThan(0));
+    expect(dental.fade, 0);
+  });
+
+  test(
+    'video layers: photos without the template, template on clear',
+    () async {
+      final before = await solid(red);
+      final rec = ui.PictureRecorder();
+      final c = Canvas(rec);
+      // قالب: إطار أزرق وفتحة بالنص.
+      c.drawRect(full, Paint()..color = blue);
+      c.drawRect(
+        const Rect.fromLTWH(100, 100, 200, 200),
+        Paint()..blendMode = BlendMode.clear,
+      );
+      final tpl = await rec.endRecording().toImage(400, 400);
+      final spec = DesignSpec(
+        brand: dental,
+        size: size,
+        slots: const [Rect.fromLTWH(100, 100, 200, 200)],
+        fills: [SlotFill(Which.after)],
+        photos: {Which.after: (before, const Photo('a'))},
+        template: tpl,
+        labels: false,
+      );
+      final photos = await pixels(
+        await renderDesign(spec, layer: DesignLayer.photos),
+      );
+      expect(at(photos, 400, const Offset(200, 200)), red);
+      expect(at(photos, 400, const Offset(20, 20)), isNot(blue));
+      final over = await pixels(
+        await renderDesign(spec, layer: DesignLayer.overlay),
+      );
+      expect(at(over, 400, const Offset(20, 20)), blue);
+      expect(at(over, 400, const Offset(200, 200)).a, 0);
+    },
+  );
 
   test('blurred backdrop fills the design behind the photos', () async {
     final px = await draw(
