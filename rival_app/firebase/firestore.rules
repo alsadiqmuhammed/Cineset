@@ -1,0 +1,89 @@
+rules_version = '2';
+
+// قاعدة بيانات عيادة ريڤال.
+// - الأعضاء بمجموعة members (رقم الوثيقة = الإيميل بالأحرف الصغيرة).
+// - role: "admin" يشوف كل شي ويدير الحسابات. "doctor" يشوف بس حالاته
+//   والمراجعين اللي عنده حالات وياهم. وثيقة بدون role تنحسب إدارة.
+// - dental / beauty: رقم ملف الطبيب بكل قسم (مثلاً d1 أو b1).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function memberDoc() {
+      return /databases/$(database)/documents/members/$(request.auth.token.email.lower());
+    }
+    function isMember() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && exists(memberDoc());
+    }
+    function member() {
+      return get(memberDoc()).data;
+    }
+    function isAdmin() {
+      return isMember() && member().get('role', 'admin') == 'admin';
+    }
+    // ملف الطبيب بهذا القسم ('' إذا ماكو).
+    function myDoctor(section) {
+      let id = member().get(section, '');
+      return id == null ? '' : id;
+    }
+    function isDoctorIn(section) {
+      return isMember() && myDoctor(section) != '';
+    }
+
+    match /members/{email} {
+      allow read: if request.auth != null
+        && (request.auth.token.email.lower() == email || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    match /sections/{section} {
+      // الأطباء: الكل يقرا، الإدارة تعدل، والطبيب يعدل ملفه بس.
+      match /doctors/{id} {
+        allow read: if isMember();
+        allow write: if isAdmin()
+          || (isDoctorIn(section) && id == myDoctor(section));
+      }
+
+      // معلومات العيادة.
+      match /meta/{id} {
+        allow read: if isMember();
+        allow write: if isAdmin();
+      }
+
+      // المراجعين: الطبيب يشوف اللي اسمه بقائمة doctors.
+      match /people/{id} {
+        allow read: if isAdmin()
+          || (isDoctorIn(section) && myDoctor(section) in resource.data.doctors);
+        allow create: if isAdmin()
+          || (isDoctorIn(section)
+              && myDoctor(section) in request.resource.data.doctors);
+        allow update: if isAdmin()
+          || (isDoctorIn(section)
+              && myDoctor(section) in resource.data.doctors
+              && myDoctor(section) in request.resource.data.doctors
+              && request.resource.data.doctors.hasAll(resource.data.doctors));
+        allow delete: if isAdmin();
+      }
+
+      // الحالات: الطبيب يشوف ويعدل بس اللي doctorId مالتها إله.
+      match /cases/{id} {
+        allow read: if isAdmin()
+          || (isDoctorIn(section) && resource.data.doctorId == myDoctor(section));
+        allow create: if isAdmin()
+          || (isDoctorIn(section)
+              && request.resource.data.doctorId == myDoctor(section));
+        allow update: if isAdmin()
+          || (isDoctorIn(section)
+              && resource.data.doctorId == myDoctor(section)
+              && request.resource.data.doctorId == myDoctor(section));
+        allow delete: if isAdmin()
+          || (isDoctorIn(section) && resource.data.doctorId == myDoctor(section));
+      }
+
+      // النسخة الأولى (مراجع ويا حالاته بوثيقة وحدة): الإدارة بس، للتحويل.
+      match /patients/{id} {
+        allow read, write: if isAdmin();
+      }
+    }
+  }
+}
